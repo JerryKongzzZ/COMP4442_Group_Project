@@ -12,7 +12,7 @@ db_password = sys.argv[2]
 
 # AWS S3 与 RDS MySQL 配置
 S3_INPUT_PATH = "s3a://comp4442-llm-monitor-bucket/raw_logs/*.json"
-JDBC_URL = "jdbc:mysql://database-comp4442.cdseymmwam07.ap-east-1.rds.amazonaws.com:3306/mysql"
+JDBC_URL = "jdbc:mysql://database-comp4442.cdseymmwam07.ap-east-1.rds.amazonaws.com:3306/monitor_db"
 DB_PROPERTIES = {
     "user": db_user,
     "password": db_password,
