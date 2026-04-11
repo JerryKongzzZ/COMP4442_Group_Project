@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LLM Inference Performance Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6 text-blue-400">LLM Node Performance Dashboard</h1>
+        
+        <div id="alert-banner" class="hidden bg-red-600 text-white font-bold p-4 rounded mb-6 animate-pulse">
+            ⚠️ WARNING: GPU VRAM Overflow Risk! Allocation > 95%. Triggering eviction policy.
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-lg mb-8 shadow-lg">
+            <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Global Performance Summary</h2>
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="text-gray-400">
+                        <th class="pb-2">Instance ID</th>
+                        <th class="pb-2">Avg Throughput (tokens/s)</th>
+                        <th class="pb-2">Peak VRAM (%)</th>
+                        <th class="pb-2">Pipeline Latency (ms)</th>
+                    </tr>
+                </thead>
+                <tbody id="summary-body" class="text-lg">
+                    </tbody>
+            </table>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold mb-4">Real-time VRAM Allocation (Updates 30s)</h2>
+            <div id="vramChart" style="width: 100%; height: 400px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // 配置你的后端接口地址 (部署到 EC2 后替换为公网 IP)
+        const API_BASE = "http://127.0.0.1:8000/api";
+
+        // 1. 获取并渲染摘要表格
+        async function fetchSummary() {
+            try {
+                const response = await fetch(`${API_BASE}/summary`);
+                const res = await response.json();
+                const data = res.data;
+                document.getElementById('summary-body').innerHTML = `
+                    <tr>
+                        <td class="pt-2">${data.model_instance}</td>
+                        <td class="pt-2 text-green-400">${data.avg_throughput}</td>
+                        <td class="pt-2 text-red-400">${data.peak_vram_usage}%</td>
+                        <td class="pt-2 text-yellow-400">${data.avg_pipeline_latency}</td>
+                    </tr>
+                `;
+            } catch (error) { console.error("Summary fetch failed:", error); }
+        }
+
+        // 2. 初始化 ECharts 实时图表
+        const chart = echarts.init(document.getElementById('vramChart'));
+        const timeData = [];
+        const vramData = [];
+
+        chart.setOption({
+            backgroundColor: 'transparent',
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: timeData, axisLine: { lineStyle: { color: '#ccc' } } },
+            yAxis: { type: 'value', max: 100, axisLine: { lineStyle: { color: '#ccc' } } },
+            series: [{
+                name: 'VRAM Usage (%)',
+                type: 'line',
+                data: vramData,
+                smooth: true,
+                itemStyle: { color: '#3b82f6' },
+                areaStyle: { color: 'rgba(59, 130, 246, 0.3)' }
+            }]
+        });
+
+        // 3. 轮询实时数据与告警逻辑
+        async function fetchRealtime() {
+            try {
+                const response = await fetch(`${API_BASE}/realtime`);
+                const data = await response.json();
+
+                // 更新图表数据
+                if (timeData.length > 10) { timeData.shift(); vramData.shift(); }
+                timeData.push(data.timestamp);
+                vramData.push(data.vram_percent);
+                chart.setOption({ xAxis: { data: timeData }, series: [{ data: vramData }] });
+
+                // 核心警告逻辑：当显存 > 95% 时触发 UI 报警
+                const alertBanner = document.getElementById('alert-banner');
+                if (data.vram_percent > 95) {
+                    alertBanner.classList.remove('hidden');
+                } else {
+                    alertBanner.classList.add('hidden');
+                }
+            } catch (error) { console.error("Realtime fetch failed:", error); }
+        }
+
+        // 页面加载时立即执行一次，随后每 30 秒刷新一次
+        fetchSummary();
+        fetchRealtime();
+        setInterval(fetchRealtime, 30000); // 30秒 = 30000毫秒
+    </script>
+</body>
+</html>
