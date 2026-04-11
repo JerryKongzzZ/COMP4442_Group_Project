@@ -1,3 +1,4 @@
 /data_pipeline/venv
 data_pipeline/.env
 /data_pipeline/logs
+/spark_analytics/key
