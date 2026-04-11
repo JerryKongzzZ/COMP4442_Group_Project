@@ -3,11 +3,18 @@ import json
 import time
 import random
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # AWS S3 配置 (请替换为你们真实的凭证和桶名)
-AWS_ACCESS_KEY = 'YOUR_ACCESS_KEY'
-AWS_SECRET_KEY = 'YOUR_SECRET_KEY'
-BUCKET_NAME = 'comp4442-llm-monitor-bucket'
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
+LOCAL_LOG_DIR = "logs"
+
+os.makedirs(LOCAL_LOG_DIR, exist_ok=True)
 
 # 初始化 S3 客户端
 s3_client = boto3.client(
@@ -30,18 +37,21 @@ def generate_mock_log():
     }
 
 print("开始实时推送大模型性能日志到 AWS S3...")
+
 while True:
     log_data = generate_mock_log()
     file_name = f"log_{int(time.time())}.json"
-    
-    # 将日志写入临时文件并上传 S3
-    with open(file_name, 'w') as f:
-        json.dump(log_data, f)
-    
+    file_path = os.path.join(LOCAL_LOG_DIR, file_name)
+
+    # 将日志写入指定文件夹
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(log_data, f, ensure_ascii=False, indent=2)
+
     try:
-        s3_client.upload_file(file_name, BUCKET_NAME, f"raw_logs/{file_name}")
+        # 上传到 S3 的指定路径
+        s3_client.upload_file(file_path, BUCKET_NAME, f"raw_logs/{file_name}")
         print(f"[{log_data['timestamp']}] 成功推送: VRAM {log_data['vram_usage_percent']}%")
     except Exception as e:
         print(f"上传失败: {e}")
-    
-    time.sleep(5) # 模拟每5秒产生一条聚合日志
+
+    time.sleep(5)  # 模拟每5秒产生一条聚合日志
