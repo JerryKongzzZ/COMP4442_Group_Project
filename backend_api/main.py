@@ -29,23 +29,24 @@ def get_llm_performance():
     try:
         connection = pymysql.connect(**DB_CONFIG)
         with connection.cursor() as cursor:
-            # 取出 instance_id
-            sql = "SELECT instance_id, avg_throughput, peak_vram_usage, avg_pipeline_latency FROM performance_summary"
+            # 🌟 新增了 last_update_time 字段，并且使用倒序，取最新 200 条
+            sql = "SELECT instance_id, avg_throughput, peak_vram_usage, avg_pipeline_latency, last_update_time FROM performance_summary ORDER BY id DESC LIMIT 200"
             cursor.execute(sql)
             all_results = cursor.fetchall()
             
             if not all_results:
                 return {"status": "error", "message": "Database is empty"}
                 
-            # 🌟 核心算法：提取每个节点最新的一条数据
-            # 为了防止内存溢出，我们只看最后 200 条记录
+            # all_results 已经是 [最新, 较老, 最老] 的顺序了
             recent_results = all_results[-200:]
             latest_nodes_data = {}
             
-            # 倒序遍历，第一次碰到的 instance_id 就是最新的
-            for row in reversed(recent_results):
+            # 正序遍历，因为排在最前面的就是最新的！
+            for row in recent_results:
                 # 兼容旧数据（如果 instance_id 是空的，默认为 Node-1）
                 node_id = row.get("instance_id") or "vLLM-Node-1" 
+                
+                # 第一次碰到的 instance_id（也就是最新的那条），就存下来
                 if node_id not in latest_nodes_data:
                     latest_nodes_data[node_id] = row
             

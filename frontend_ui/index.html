@@ -74,9 +74,16 @@
             70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
+        .ring-pulse-red {
+            box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+            animation: ringPulseRed 2s infinite;
+        }
+        @keyframes ringPulseRed {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6); }
+            70% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+        }
         .icon-bg { background: linear-gradient(135deg, var(--icon-from), var(--icon-to)); }
-        
-        /* 下拉菜单美化 */
         select {
             appearance: none;
             background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
@@ -95,11 +102,9 @@
                 <p class="text-slate-500 mt-1 text-sm font-medium tracking-wide">Multi-Node vLLM Inference Engine</p>
             </div>
             <div class="flex items-center gap-4">
-                <select id="node-selector" class="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 pr-8 font-mono outline-none shadow-lg">
-                    <option value="vLLM-Node-1">🔍 Watch: vLLM-Node-1</option>
-                    <option value="vLLM-Node-2">🔍 Watch: vLLM-Node-2</option>
+                <select id="node-selector" class="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 pr-8 font-mono outline-none shadow-lg transition-all">
+                    <option value="" disabled selected>⏳ Scanning cluster...</option>
                 </select>
-
                 <div class="flex items-center gap-3 bg-slate-800/60 border border-slate-700/50 rounded-full px-5 py-2.5 text-sm">
                     <span class="relative flex h-2.5 w-2.5">
                         <span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -147,7 +152,7 @@
                     <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg icon-bg" style="--icon-from: rgba(99,102,241,0.3); --icon-to: rgba(139,92,246,0.3);">🖥️</div>
                     <span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Selected Node</span>
                 </div>
-                <div class="text-xl font-bold text-blue-400 font-mono" id="val-instance">vLLM-Node-1</div>
+                <div class="text-xl font-bold text-blue-400 font-mono" id="val-instance">Waiting...</div>
                 <div class="text-xs text-slate-600 mt-1">Real-time Telemetry</div>
             </div>
             <div class="stat-card glow-border rounded-2xl p-5 card-enter" style="animation-delay: 0.1s">
@@ -193,7 +198,7 @@
 
         <div class="chart-card glow-border rounded-2xl p-6 card-enter" style="animation-delay: 0.25s">
             <div class="flex items-center justify-between mb-2">
-                <h2 class="text-lg font-bold text-slate-200">Real-time Telemetry (<span id="chart-title-node" class="text-blue-400">vLLM-Node-1</span>)</h2>
+                <h2 class="text-lg font-bold text-slate-200">Real-time Telemetry (<span id="chart-title-node" class="text-blue-400">Waiting...</span>)</h2>
             </div>
             <div id="performanceChart" style="width: 100%; height: 420px;"></div>
         </div>
@@ -210,19 +215,55 @@
         const chart = echarts.init(document.getElementById('performanceChart'));
         const maxPoints = 20;
 
-        // 图表数据池
-        const timeData       = Array(maxPoints).fill('');
-        const throughputData = Array(maxPoints).fill(null);
-        const vramData       = Array(maxPoints).fill(null);
-        const latencyData    = Array(maxPoints).fill(null);
+        const knownNodes = new Set();
+        const nodeHistory = {};
+
+        function ensureHistory(nodeId) {
+            if (!nodeHistory[nodeId]) {
+                nodeHistory[nodeId] = {
+                    time: [], throughput: [], vram: [], latency: [], lastHash: ""
+                };
+            }
+            return nodeHistory[nodeId];
+        }
+
+        function renderNodeToChart(nodeId) {
+            const h = ensureHistory(nodeId);
+            const len = h.time.length;
+            const pad = maxPoints - len;
+
+            const timeArr       = Array(pad).fill('').concat(h.time);
+            const throughputArr = Array(pad).fill(null).concat(h.throughput);
+            const vramArr       = Array(pad).fill(null).concat(h.vram);
+            const latencyArr    = Array(pad).fill(null).concat(h.latency);
+
+            chart.setOption({
+                xAxis: { data: timeArr },
+                series: [
+                    { data: throughputArr },
+                    { data: vramArr },
+                    { data: latencyArr }
+                ]
+            });
+
+            if (len > 0) {
+                const tp  = h.throughput[len - 1].toFixed(2);
+                const vr  = h.vram[len - 1].toFixed(2);
+                const lat = h.latency[len - 1].toFixed(2);
+                updateNumberElement('val-throughput', tp);
+                updateNumberElement('val-vram', vr);
+                updateNumberElement('val-latency', lat);
+                document.getElementById('bar-throughput').style.width = Math.min(tp / 3000 * 100, 100) + '%';
+                document.getElementById('bar-vram').style.width = vr + '%';
+                document.getElementById('bar-latency').style.width = Math.min(lat / 60 * 100, 100) + '%';
+            }
+        }
 
         chart.setOption({
             backgroundColor: 'transparent',
             tooltip: {
-                trigger: 'axis',
-                backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                borderColor: 'rgba(100,116,139,0.3)',
-                borderWidth: 1,
+                trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                borderColor: 'rgba(100,116,139,0.3)', borderWidth: 1,
                 textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono', fontSize: 12 },
                 axisPointer: { lineStyle: { color: 'rgba(148,163,184,0.2)', type: 'dashed' } }
             },
@@ -233,8 +274,7 @@
             },
             grid: { left: 60, right: 90, top: 45, bottom: 30 },
             xAxis: {
-                type: 'category',
-                data: timeData,
+                type: 'category', data: Array(maxPoints).fill(''),
                 axisLine: { lineStyle: { color: 'rgba(71,85,105,0.4)' } },
                 axisTick: { show: false },
                 axisLabel: { color: '#475569', fontSize: 10, fontFamily: 'JetBrains Mono' },
@@ -242,143 +282,153 @@
             },
             yAxis: [
                 {
-                    type: 'value', name: 'Throughput',
-                    nameTextStyle: { color: '#10b981', fontSize: 11, padding: [0, 40, 0, 0] },
-                    position: 'left', min: 'dataMin',
-                    axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
-                    axisTick: { show: false },
-                    axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'Throughput', nameTextStyle: { color: '#10b981', fontSize: 11, padding: [0, 40, 0, 0] },
+                    position: 'left', min: 'dataMin', axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
+                    axisTick: { show: false }, axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { lineStyle: { color: 'rgba(51,65,85,0.3)', type: 'dashed' } }
                 },
                 {
-                    type: 'value', name: 'VRAM %',
-                    nameTextStyle: { color: '#f43f5e', fontSize: 11 },
-                    position: 'right', min: 0, max: 100,
-                    axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
-                    axisTick: { show: false },
-                    axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'VRAM %', nameTextStyle: { color: '#f43f5e', fontSize: 11 },
+                    position: 'right', min: 0, max: 100, axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
+                    axisTick: { show: false }, axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { show: false }
                 },
                 {
-                    type: 'value', name: 'Latency',
-                    nameTextStyle: { color: '#f59e0b', fontSize: 11 },
-                    position: 'right', offset: 50, min: 'dataMin',
-                    axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
-                    axisTick: { show: false },
-                    axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'Latency', nameTextStyle: { color: '#f59e0b', fontSize: 11 },
+                    position: 'right', offset: 50, min: 'dataMin', axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
+                    axisTick: { show: false }, axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { show: false }
                 }
             ],
             series: [
                 {
                     name: 'Throughput (tokens/s)', type: 'line', yAxisIndex: 0,
-                    data: throughputData, smooth: 0.4, connectNulls: false,
-                    showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#10b981' },
-                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(16,185,129,0.35)' }
+                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#10b981' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(16,185,129,0.35)' }
                 },
                 {
                     name: 'VRAM Usage (%)', type: 'line', yAxisIndex: 1,
-                    data: vramData, smooth: 0.4, connectNulls: false,
-                    showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#f43f5e' },
-                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(244,63,94,0.35)' },
+                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#f43f5e' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(244,63,94,0.35)' },
                     areaStyle: {
                         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                            { offset: 0, color: 'rgba(244,63,94,0.2)' },
-                            { offset: 1, color: 'rgba(244,63,94,0.0)' }
+                            { offset: 0, color: 'rgba(244,63,94,0.2)' }, { offset: 1, color: 'rgba(244,63,94,0.0)' }
                         ])
                     }
                 },
                 {
                     name: 'Latency (ms)', type: 'line', yAxisIndex: 2,
-                    data: latencyData, smooth: 0.4, connectNulls: false,
-                    showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#f59e0b' },
-                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(245,158,11,0.35)' }
+                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#f59e0b' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(245,158,11,0.35)' }
                 }
             ],
-            animationDuration: 600,
-            animationDurationUpdate: 600,
-            animationEasingUpdate: 'cubicInOut'
+            animationDuration: 600, animationDurationUpdate: 600, animationEasingUpdate: 'cubicInOut'
         });
 
-        let lastDataHash = "";
-
-        // 监听下拉菜单切换节点
         document.getElementById('node-selector').addEventListener('change', function(e) {
-            document.getElementById('val-instance').innerText = e.target.value;
-            document.getElementById('chart-title-node').innerText = e.target.value;
-            // 清空图表数据，准备绘制新节点
-            timeData.fill(''); throughputData.fill(null); vramData.fill(null); latencyData.fill(null);
-            chart.setOption({ xAxis: { data: timeData }, series: [{ data: throughputData }, { data: vramData }, { data: latencyData }] });
-            lastDataHash = ""; // 强制刷新
-            fetchAndRefreshData();
+            const nodeId = e.target.value;
+            document.getElementById('val-instance').innerText = nodeId;
+            document.getElementById('chart-title-node').innerText = nodeId;
+            renderNodeToChart(nodeId);
         });
 
         async function fetchAndRefreshData() {
+            // 🌟 核心升级：1.5秒极速超时熔断器！
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1500);
+
             try {
-                const response = await fetch(API_URL);
+                const response = await fetch(API_URL, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                // 🌟 核心升级：如果 HTTP 状态码不是 200，直接抛出异常变红！
+                if (!response.ok) throw new Error("HTTP Error " + response.status);
+
                 const res = await response.json();
 
-                if (res.status === "success" && Array.isArray(res.data)) {
-                    const dataArray = res.data;
+                // 🌟 核心升级：如果后端代码报错（例如没加字段），直接抛出异常变红！
+                if (res.status !== "success") {
+                    throw new Error("Backend Error: " + res.message);
+                }
 
-                    // 1. 渲染全局摘要表格 (Global Summary)
+                if (Array.isArray(res.data)) {
+                    const dataArray = res.data;
+                    
+                    const selector = document.getElementById('node-selector');
+                    let nodesUpdated = false;
+
+                    dataArray.forEach(nodeData => {
+                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
+                        if (!knownNodes.has(nodeName)) {
+                            knownNodes.add(nodeName);
+                            nodesUpdated = true;
+                            const option = document.createElement('option');
+                            option.value = nodeName;
+                            option.innerText = `🔍 Watch: ${nodeName}`;
+                            selector.appendChild(option);
+                        }
+                    });
+
+                    if (nodesUpdated && selector.options[0].value === "") {
+                        selector.remove(0); 
+                        const firstNode = Array.from(knownNodes)[0];
+                        selector.value = firstNode;
+                        document.getElementById('val-instance').innerText = firstNode;
+                        document.getElementById('chart-title-node').innerText = firstNode;
+                    }
+
                     let tableHTML = "";
                     dataArray.forEach(nodeData => {
                         const tp  = parseFloat(nodeData.avg_throughput).toFixed(2);
                         const vr  = parseFloat(nodeData.peak_vram_usage).toFixed(2);
                         const lat = parseFloat(nodeData.avg_pipeline_latency).toFixed(2);
-                        const nodeName = nodeData.instance_id || 'vLLM-Node-1';
-                        
+                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
                         tableHTML += `
                             <tr class="hover:bg-slate-700/30 transition-colors">
                                 <td class="py-3 text-slate-300 font-bold">${nodeName}</td>
                                 <td class="py-3 text-emerald-400">${tp}</td>
                                 <td class="py-3 text-rose-400">${vr}%</td>
                                 <td class="py-3 text-amber-400">${lat}</td>
-                            </tr>
-                        `;
+                            </tr>`;
                     });
                     document.getElementById('summary-body').innerHTML = tableHTML;
 
-                    // 2. 提取当前选中节点的具体数据更新图表
-                    const selectedNode = document.getElementById('node-selector').value;
-                    const targetData = dataArray.find(n => (n.instance_id || 'vLLM-Node-1') === selectedNode);
+                    dataArray.forEach(nodeData => {
+                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
+                        const tp  = parseFloat(nodeData.avg_throughput);
+                        const vr  = parseFloat(nodeData.peak_vram_usage);
+                        const lat = parseFloat(nodeData.avg_pipeline_latency);
 
-                    if (targetData) {
-                        const currentDataHash = `${targetData.avg_throughput}_${targetData.peak_vram_usage}_${targetData.avg_pipeline_latency}`;
-                        if (currentDataHash === lastDataHash) return;
-                        lastDataHash = currentDataHash;
+                        // 🌟 提取真实事件时间
+                        let logTime = new Date().toLocaleTimeString();
+                        if (nodeData.last_update_time) {
+                            const dateObj = new Date(nodeData.last_update_time);
+                            logTime = dateObj.toLocaleTimeString();
+                        }
 
-                        const tp  = parseFloat(targetData.avg_throughput).toFixed(2);
-                        const vr  = parseFloat(targetData.peak_vram_usage).toFixed(2);
-                        const lat = parseFloat(targetData.avg_pipeline_latency).toFixed(2);
+                        const h = ensureHistory(nodeName);
+                        const currentHash = `${tp.toFixed(2)}_${vr.toFixed(2)}_${lat.toFixed(2)}`;
 
-                        updateNumberElement('val-throughput', tp);
-                        updateNumberElement('val-vram', vr);
-                        updateNumberElement('val-latency', lat);
+                        if (currentHash === h.lastHash) return;
+                        h.lastHash = currentHash;
 
-                        document.getElementById('bar-throughput').style.width = Math.min(tp / 3000 * 100, 100) + '%';
-                        document.getElementById('bar-vram').style.width = vr + '%';
-                        document.getElementById('bar-latency').style.width = Math.min(lat / 60 * 100, 100) + '%';
+                        h.time.push(logTime);
+                        h.throughput.push(tp);
+                        h.vram.push(vr);
+                        h.latency.push(lat);
 
-                        const now = new Date().toLocaleTimeString();
+                        if (h.time.length > maxPoints) {
+                            h.time.shift(); h.throughput.shift(); h.vram.shift(); h.latency.shift();
+                        }
+                    });
 
-                        timeData.shift(); throughputData.shift(); vramData.shift(); latencyData.shift();
-                        timeData.push(now);
-                        throughputData.push(parseFloat(tp));
-                        vramData.push(parseFloat(vr));
-                        latencyData.push(parseFloat(lat));
+                    const selectedNode = selector.value;
+                    if (selectedNode) {
+                        renderNodeToChart(selectedNode);
 
-                        chart.setOption({
-                            xAxis: { data: timeData },
-                            series: [{ data: throughputData }, { data: vramData }, { data: latencyData }]
-                        });
-
+                        const targetData = dataArray.find(n => (n.instance_id || 'vLLM-Node-Unknown') === selectedNode);
                         const alertBanner = document.getElementById('alert-banner');
-                        if (targetData.peak_vram_usage > 95) {
+                        if (targetData && targetData.peak_vram_usage > 95) {
                             document.getElementById('alert-title').innerText = `CRITICAL: GPU VRAM Overflow Risk on ${selectedNode}`;
                             alertBanner.classList.remove('hidden');
                         } else {
@@ -386,12 +436,33 @@
                         }
                     }
 
-                    document.getElementById('sync-status').innerText = 'Cluster Live';
+                    // 🟢 恢复绿灯状态
+                    const statusText = document.getElementById('sync-status');
+                    statusText.innerText = 'Cluster Live';
+                    statusText.className = 'text-slate-300 font-medium';
+                    
+                    // 注意：由于我们在 HTML 里去掉了直接绑定 ID 在小圆点上的逻辑，我们需要通过父节点找
+                    const pingContainer = document.getElementById('ping-ring').parentElement;
+                    pingContainer.innerHTML = `
+                        <span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-pulse"></span>
+                    `;
                 }
             } catch (error) {
                 console.error("Data fetch failed.", error);
-                document.getElementById('sync-status').innerText = "Connection Lost";
-                document.getElementById('ping-ring').className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75';
+                
+                // 🔴 触发红灯断线警报！
+                const statusText = document.getElementById('sync-status');
+                statusText.innerText = "Connection Lost";
+                statusText.className = "text-red-400 font-bold";
+
+                const pingContainer = document.getElementById('ping-ring')?.parentElement;
+                if(pingContainer) {
+                    pingContainer.innerHTML = `
+                        <span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600 ring-pulse-red"></span>
+                    `;
+                }
             }
         }
 
