@@ -379,6 +379,9 @@
         function appendRecords(nodeId, records) {
             const h = ensureHistory(nodeId);
             records.forEach(r => {
+                // 严谨过滤：确保只追加属于当前 nodeId 的记录
+                if (r.instance_id && r.instance_id !== nodeId) return;
+
                 const ts = r.last_update_time || '';
                 // 用时间戳去重（数据库有精确时间戳，不会重复）
                 if (ts && ts === h.lastTs) return;

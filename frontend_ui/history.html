@@ -171,6 +171,9 @@
         document.getElementById('chart-node').innerText    = nodeId;
         document.getElementById('s-instance').innerText    = nodeId;
 
+        // 确保 records 是数组
+        if (!records || !Array.isArray(records)) records = [];
+
         const len = records.length;
         document.getElementById('s-records').innerText    = len;
         document.getElementById('table-count').innerText  = len;
@@ -189,14 +192,20 @@
         // 准备数组
         const times = [], tps = [], vrams = [], lats = [];
         let sumTp = 0, sumLat = 0, maxVr = 0;
+        
         records.forEach(r => {
             const t = r.last_update_time ? new Date(r.last_update_time).toLocaleTimeString() : '';
             times.push(t);
-            const tp  = parseFloat(r.avg_throughput);
-            const vr  = parseFloat(r.peak_vram_usage);
-            const lat = parseFloat(r.avg_pipeline_latency);
-            tps.push(tp); vrams.push(vr); lats.push(lat);
-            sumTp += tp; sumLat += lat;
+            const tp  = parseFloat(r.avg_throughput) || 0;
+            const vr  = parseFloat(r.peak_vram_usage) || 0;
+            const lat = parseFloat(r.avg_pipeline_latency) || 0;
+            
+            tps.push(tp); 
+            vrams.push(vr); 
+            lats.push(lat);
+            
+            sumTp += tp; 
+            sumLat += lat;
             if (vr > maxVr) maxVr = vr;
         });
 
@@ -204,8 +213,8 @@
         document.getElementById('s-vram').innerText       = maxVr.toFixed(2);
         document.getElementById('s-latency').innerText    = (sumLat / len).toFixed(2);
 
-        const firstTime = records[0].last_update_time || '';
-        const lastTime  = records[len-1].last_update_time || '';
+        const firstTime = times[0] || '';
+        const lastTime  = times[len-1] || '';
         document.getElementById('chart-range').innerText = firstTime + '  →  ' + lastTime;
 
         // ---- Chart ----
@@ -223,7 +232,7 @@
             },
             grid: { left: 60, right: 90, top: 45, bottom: 70 },
             dataZoom: [
-                { type: 'slider', start: 0, end: 100, bottom: 10, height: 24,
+                { type: 'slider', start: 80, end: 100, bottom: 10, height: 24,
                   borderColor: 'rgba(100,116,139,0.3)', fillerColor: 'rgba(59,130,246,0.25)',
                   textStyle: { color: '#64748b' } }
             ],
@@ -356,6 +365,10 @@
         const records = await loadHistory(nodeId, 0);    // 0 = 全部记录
         document.getElementById('loading-state').classList.add('hidden');
         document.getElementById('content').classList.remove('hidden');
+        
+        // 容器显示后需要重新调整图表大小，否则会挤在一起
+        chart.resize();
+        
         renderHistory(nodeId, records);
     }
 

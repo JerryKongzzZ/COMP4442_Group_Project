@@ -5,3 +5,4 @@ data_pipeline/.env
 backend_api/.env
 backend_api/api.log
 spark_analytics/spark_scheduler.log
+/backend_api/__pycache__
