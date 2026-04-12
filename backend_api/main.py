@@ -4,48 +4,56 @@ from fastapi.middleware.cors import CORSMiddleware
 import pymysql
 from dotenv import load_dotenv
 
-# 👇 这一行极其重要！它会自动读取同目录下的 .env 文件
 load_dotenv()
-
 app = FastAPI()
 
-# 允许跨域（前端调用必备）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
-# 🛠️ 数据库配置：现在全部从 .env 文件安全读取！
 DB_CONFIG = {
     "host": os.getenv("DB_HOST"),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
     "database": os.getenv("DB_NAME"),
-    # 注意：.env 读出来的都是字符串，port 需要转成整数
     "port": int(os.getenv("DB_PORT", 3306)), 
     "cursorclass": pymysql.cursors.DictCursor
 }
 
 @app.get("/api/performance")
 def get_llm_performance():
-    """
-    提供给前端大屏调用的接口
-    """
     try:
         connection = pymysql.connect(**DB_CONFIG)
         with connection.cursor() as cursor:
-            sql = "SELECT avg_throughput, peak_vram_usage, avg_pipeline_latency FROM performance_summary"
+            # 取出 instance_id
+            sql = "SELECT instance_id, avg_throughput, peak_vram_usage, avg_pipeline_latency FROM performance_summary"
             cursor.execute(sql)
-            result = cursor.fetchone() 
+            all_results = cursor.fetchall()
+            
+            if not all_results:
+                return {"status": "error", "message": "Database is empty"}
+                
+            # 🌟 核心算法：提取每个节点最新的一条数据
+            # 为了防止内存溢出，我们只看最后 200 条记录
+            recent_results = all_results[-200:]
+            latest_nodes_data = {}
+            
+            # 倒序遍历，第一次碰到的 instance_id 就是最新的
+            for row in reversed(recent_results):
+                # 兼容旧数据（如果 instance_id 是空的，默认为 Node-1）
+                node_id = row.get("instance_id") or "vLLM-Node-1" 
+                if node_id not in latest_nodes_data:
+                    latest_nodes_data[node_id] = row
             
         connection.close()
         
         return {
             "status": "success",
-            "data": result
+            "data": list(latest_nodes_data.values()) # 返回数组
         }
     except Exception as e:
         return {

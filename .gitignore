@@ -3,3 +3,5 @@ data_pipeline/.env
 /data_pipeline/logs
 /spark_analytics/key
 backend_api/.env
+backend_api/api.log
+spark_analytics/spark_scheduler.log
