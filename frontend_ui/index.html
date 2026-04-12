@@ -199,70 +199,41 @@
         <div class="chart-card glow-border rounded-2xl p-6 card-enter" style="animation-delay: 0.25s">
             <div class="flex items-center justify-between mb-2">
                 <h2 class="text-lg font-bold text-slate-200">Real-time Telemetry (<span id="chart-title-node" class="text-blue-400">Waiting...</span>)</h2>
+                <span class="text-xs text-slate-600 font-mono" id="cached-count"></span>
             </div>
             <div id="performanceChart" style="width: 100%; height: 420px;"></div>
         </div>
 
         <footer class="mt-8 text-center text-xs text-slate-700 flex justify-between px-4">
             <span>Powered by PySpark Structured Streaming & FastAPI</span>
-            <span>PolyU FYP Project Demo</span>
+            <span>PolyU COMP4442 Group Project Demo</span>
         </footer>
     </div>
 
     <script>
-        const API_URL = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com/api/performance";
-
-        const chart = echarts.init(document.getElementById('performanceChart'));
+        /* ===== CONFIG ===== */
+        const BASE_URL  = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com";
+        const API_URL   = BASE_URL + "/api/performance";
         const maxPoints = 20;
 
-        const knownNodes = new Set();
-        const nodeHistory = {};
+        /* ===== DATA ===== */
+        const knownNodes  = new Set();
+        const nodeHistory = {};          // { nodeId: { time[], throughput[], vram[], latency[], lastTs:"" } }
+        let   bootDone    = false;       // 防止轮询和初始化冲突
 
         function ensureHistory(nodeId) {
             if (!nodeHistory[nodeId]) {
-                nodeHistory[nodeId] = {
-                    time: [], throughput: [], vram: [], latency: [], lastHash: ""
-                };
+                nodeHistory[nodeId] = { time: [], throughput: [], vram: [], latency: [], lastTs: "" };
             }
             return nodeHistory[nodeId];
         }
 
-        function renderNodeToChart(nodeId) {
-            const h = ensureHistory(nodeId);
-            const len = h.time.length;
-            const pad = maxPoints - len;
-
-            const timeArr       = Array(pad).fill('').concat(h.time);
-            const throughputArr = Array(pad).fill(null).concat(h.throughput);
-            const vramArr       = Array(pad).fill(null).concat(h.vram);
-            const latencyArr    = Array(pad).fill(null).concat(h.latency);
-
-            chart.setOption({
-                xAxis: { data: timeArr },
-                series: [
-                    { data: throughputArr },
-                    { data: vramArr },
-                    { data: latencyArr }
-                ]
-            });
-
-            if (len > 0) {
-                const tp  = h.throughput[len - 1].toFixed(2);
-                const vr  = h.vram[len - 1].toFixed(2);
-                const lat = h.latency[len - 1].toFixed(2);
-                updateNumberElement('val-throughput', tp);
-                updateNumberElement('val-vram', vr);
-                updateNumberElement('val-latency', lat);
-                document.getElementById('bar-throughput').style.width = Math.min(tp / 3000 * 100, 100) + '%';
-                document.getElementById('bar-vram').style.width = vr + '%';
-                document.getElementById('bar-latency').style.width = Math.min(lat / 60 * 100, 100) + '%';
-            }
-        }
-
+        /* ===== CHART ===== */
+        const chart = echarts.init(document.getElementById('performanceChart'));
         chart.setOption({
             backgroundColor: 'transparent',
             tooltip: {
-                trigger: 'axis', backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                trigger: 'axis', backgroundColor: 'rgba(15,23,42,0.95)',
                 borderColor: 'rgba(100,116,139,0.3)', borderWidth: 1,
                 textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono', fontSize: 12 },
                 axisPointer: { lineStyle: { color: 'rgba(148,163,184,0.2)', type: 'dashed' } }
@@ -282,202 +253,301 @@
             },
             yAxis: [
                 {
-                    type: 'value', name: 'Throughput', nameTextStyle: { color: '#10b981', fontSize: 11, padding: [0, 40, 0, 0] },
-                    position: 'left', min: 'dataMin', axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
-                    axisTick: { show: false }, axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'Throughput',
+                    nameTextStyle: { color: '#10b981', fontSize: 11, padding: [0,40,0,0] },
+                    position: 'left', min: 0,
+                    axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
+                    axisTick: { show: false },
+                    axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { lineStyle: { color: 'rgba(51,65,85,0.3)', type: 'dashed' } }
                 },
                 {
-                    type: 'value', name: 'VRAM %', nameTextStyle: { color: '#f43f5e', fontSize: 11 },
-                    position: 'right', min: 0, max: 100, axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
-                    axisTick: { show: false }, axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'VRAM %',
+                    nameTextStyle: { color: '#f43f5e', fontSize: 11 },
+                    position: 'right', min: 0, max: 100,
+                    axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
+                    axisTick: { show: false },
+                    axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { show: false }
                 },
                 {
-                    type: 'value', name: 'Latency', nameTextStyle: { color: '#f59e0b', fontSize: 11 },
-                    position: 'right', offset: 50, min: 'dataMin', axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
-                    axisTick: { show: false }, axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    type: 'value', name: 'Latency',
+                    nameTextStyle: { color: '#f59e0b', fontSize: 11 },
+                    position: 'right', offset: 50, min: 0,
+                    axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
+                    axisTick: { show: false },
+                    axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
                     splitLine: { show: false }
                 }
             ],
             series: [
                 {
                     name: 'Throughput (tokens/s)', type: 'line', yAxisIndex: 0,
-                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#10b981' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(16,185,129,0.35)' }
+                    data: Array(maxPoints).fill(null), smooth: 0.4, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#10b981' },
+                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(16,185,129,0.35)' }
                 },
                 {
                     name: 'VRAM Usage (%)', type: 'line', yAxisIndex: 1,
-                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#f43f5e' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(244,63,94,0.35)' },
+                    data: Array(maxPoints).fill(null), smooth: 0.4, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#f43f5e' },
+                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(244,63,94,0.35)' },
                     areaStyle: {
-                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                            { offset: 0, color: 'rgba(244,63,94,0.2)' }, { offset: 1, color: 'rgba(244,63,94,0.0)' }
+                        color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                            { offset: 0, color: 'rgba(244,63,94,0.2)' },
+                            { offset: 1, color: 'rgba(244,63,94,0.0)' }
                         ])
                     }
                 },
                 {
                     name: 'Latency (ms)', type: 'line', yAxisIndex: 2,
-                    data: Array(maxPoints).fill(null), smooth: 0.4, connectNulls: false, showSymbol: true, symbolSize: 5,
-                    itemStyle: { color: '#f59e0b' }, lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(245,158,11,0.35)' }
+                    data: Array(maxPoints).fill(null), smooth: 0.4, showSymbol: true, symbolSize: 5,
+                    itemStyle: { color: '#f59e0b' },
+                    lineStyle: { width: 2.5, shadowBlur: 12, shadowColor: 'rgba(245,158,11,0.35)' }
                 }
             ],
             animationDuration: 600, animationDurationUpdate: 600, animationEasingUpdate: 'cubicInOut'
         });
 
-        document.getElementById('node-selector').addEventListener('change', function(e) {
-            const nodeId = e.target.value;
-            document.getElementById('val-instance').innerText = nodeId;
-            document.getElementById('chart-title-node').innerText = nodeId;
-            renderNodeToChart(nodeId);
-        });
+        /* ===== 渲染图表（最近 maxPoints 条） ===== */
+        function renderNodeToChart(nodeId) {
+            const h = ensureHistory(nodeId);
+            const len = h.time.length;
+            const sliceLen = Math.min(len, maxPoints);
+            const sliceTime = h.time.slice(-sliceLen);
+            const sliceTp   = h.throughput.slice(-sliceLen);
+            const sliceVr   = h.vram.slice(-sliceLen);
+            const sliceLat  = h.latency.slice(-sliceLen);
+            const pad = maxPoints - sliceLen;
 
-        async function fetchAndRefreshData() {
-            // 🌟 核心升级：1.5秒极速超时熔断器！
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1500);
+            chart.setOption({
+                xAxis: { data: Array(pad).fill('').concat(sliceTime) },
+                series: [
+                    { data: Array(pad).fill(null).concat(sliceTp) },
+                    { data: Array(pad).fill(null).concat(sliceVr) },
+                    { data: Array(pad).fill(null).concat(sliceLat) }
+                ]
+            });
 
-            try {
-                const response = await fetch(API_URL, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                // 🌟 核心升级：如果 HTTP 状态码不是 200，直接抛出异常变红！
-                if (!response.ok) throw new Error("HTTP Error " + response.status);
-
-                const res = await response.json();
-
-                // 🌟 核心升级：如果后端代码报错（例如没加字段），直接抛出异常变红！
-                if (res.status !== "success") {
-                    throw new Error("Backend Error: " + res.message);
-                }
-
-                if (Array.isArray(res.data)) {
-                    const dataArray = res.data;
-                    
-                    const selector = document.getElementById('node-selector');
-                    let nodesUpdated = false;
-
-                    dataArray.forEach(nodeData => {
-                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
-                        if (!knownNodes.has(nodeName)) {
-                            knownNodes.add(nodeName);
-                            nodesUpdated = true;
-                            const option = document.createElement('option');
-                            option.value = nodeName;
-                            option.innerText = `🔍 Watch: ${nodeName}`;
-                            selector.appendChild(option);
-                        }
-                    });
-
-                    if (nodesUpdated && selector.options[0].value === "") {
-                        selector.remove(0); 
-                        const firstNode = Array.from(knownNodes)[0];
-                        selector.value = firstNode;
-                        document.getElementById('val-instance').innerText = firstNode;
-                        document.getElementById('chart-title-node').innerText = firstNode;
-                    }
-
-                    let tableHTML = "";
-                    dataArray.forEach(nodeData => {
-                        const tp  = parseFloat(nodeData.avg_throughput).toFixed(2);
-                        const vr  = parseFloat(nodeData.peak_vram_usage).toFixed(2);
-                        const lat = parseFloat(nodeData.avg_pipeline_latency).toFixed(2);
-                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
-                        tableHTML += `
-                            <tr class="hover:bg-slate-700/30 transition-colors">
-                                <td class="py-3 text-slate-300 font-bold">${nodeName}</td>
-                                <td class="py-3 text-emerald-400">${tp}</td>
-                                <td class="py-3 text-rose-400">${vr}%</td>
-                                <td class="py-3 text-amber-400">${lat}</td>
-                            </tr>`;
-                    });
-                    document.getElementById('summary-body').innerHTML = tableHTML;
-
-                    dataArray.forEach(nodeData => {
-                        const nodeName = nodeData.instance_id || 'vLLM-Node-Unknown';
-                        const tp  = parseFloat(nodeData.avg_throughput);
-                        const vr  = parseFloat(nodeData.peak_vram_usage);
-                        const lat = parseFloat(nodeData.avg_pipeline_latency);
-
-                        // 🌟 提取真实事件时间
-                        let logTime = new Date().toLocaleTimeString();
-                        if (nodeData.last_update_time) {
-                            const dateObj = new Date(nodeData.last_update_time);
-                            logTime = dateObj.toLocaleTimeString();
-                        }
-
-                        const h = ensureHistory(nodeName);
-                        const currentHash = `${tp.toFixed(2)}_${vr.toFixed(2)}_${lat.toFixed(2)}`;
-
-                        if (currentHash === h.lastHash) return;
-                        h.lastHash = currentHash;
-
-                        h.time.push(logTime);
-                        h.throughput.push(tp);
-                        h.vram.push(vr);
-                        h.latency.push(lat);
-
-                        if (h.time.length > maxPoints) {
-                            h.time.shift(); h.throughput.shift(); h.vram.shift(); h.latency.shift();
-                        }
-                    });
-
-                    const selectedNode = selector.value;
-                    if (selectedNode) {
-                        renderNodeToChart(selectedNode);
-
-                        const targetData = dataArray.find(n => (n.instance_id || 'vLLM-Node-Unknown') === selectedNode);
-                        const alertBanner = document.getElementById('alert-banner');
-                        if (targetData && targetData.peak_vram_usage > 95) {
-                            document.getElementById('alert-title').innerText = `CRITICAL: GPU VRAM Overflow Risk on ${selectedNode}`;
-                            alertBanner.classList.remove('hidden');
-                        } else {
-                            alertBanner.classList.add('hidden');
-                        }
-                    }
-
-                    // 🟢 恢复绿灯状态
-                    const statusText = document.getElementById('sync-status');
-                    statusText.innerText = 'Cluster Live';
-                    statusText.className = 'text-slate-300 font-medium';
-                    
-                    // 注意：由于我们在 HTML 里去掉了直接绑定 ID 在小圆点上的逻辑，我们需要通过父节点找
-                    const pingContainer = document.getElementById('ping-ring').parentElement;
-                    pingContainer.innerHTML = `
-                        <span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-pulse"></span>
-                    `;
-                }
-            } catch (error) {
-                console.error("Data fetch failed.", error);
-                
-                // 🔴 触发红灯断线警报！
-                const statusText = document.getElementById('sync-status');
-                statusText.innerText = "Connection Lost";
-                statusText.className = "text-red-400 font-bold";
-
-                const pingContainer = document.getElementById('ping-ring')?.parentElement;
-                if(pingContainer) {
-                    pingContainer.innerHTML = `
-                        <span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600 ring-pulse-red"></span>
-                    `;
-                }
+            if (sliceLen > 0) {
+                const tp  = sliceTp[sliceLen-1].toFixed(2);
+                const vr  = sliceVr[sliceLen-1].toFixed(2);
+                const lat = sliceLat[sliceLen-1].toFixed(2);
+                updateNum('val-throughput', tp);
+                updateNum('val-vram', vr);
+                updateNum('val-latency', lat);
+                document.getElementById('bar-throughput').style.width = Math.min(tp/3000*100,100)+'%';
+                document.getElementById('bar-vram').style.width      = vr+'%';
+                document.getElementById('bar-latency').style.width   = Math.min(lat/60*100,100)+'%';
             }
+            document.getElementById('cached-count').innerText =
+                len + ' total points (showing last ' + sliceLen + ')';
         }
 
-        function updateNumberElement(id, newValue) {
+        /* ===== 辅助 ===== */
+        function updateNum(id, val) {
             const el = document.getElementById(id);
-            if (el.innerText !== newValue) {
-                el.innerText = newValue;
+            if (el.innerText !== val) {
+                el.innerText = val;
                 el.classList.remove('data-update');
                 void el.offsetWidth;
                 el.classList.add('data-update');
             }
         }
+        function setStatus(ok) {
+            const text = document.getElementById('sync-status');
+            const ring = document.getElementById('ping-ring');
+            const box  = ring ? ring.parentElement : null;
+            if (ok) {
+                text.innerText = 'Cluster Live'; text.className = 'text-slate-300 font-medium';
+                if(box) box.innerHTML =
+                    '<span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>' +
+                    '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-pulse"></span>';
+            } else {
+                text.innerText = 'Connection Lost'; text.className = 'text-red-400 font-bold';
+                if(box) box.innerHTML =
+                    '<span id="ping-ring" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>' +
+                    '<span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600 ring-pulse-red"></span>';
+            }
+        }
+        function formatTime(isoStr) {
+            if (!isoStr) return '';
+            return new Date(isoStr).toLocaleTimeString();
+        }
 
-        fetchAndRefreshData();
-        setInterval(fetchAndRefreshData, 2000);
+        /* ===== 把 API 记录数组追加到 nodeHistory（去重） ===== */
+        function appendRecords(nodeId, records) {
+            const h = ensureHistory(nodeId);
+            records.forEach(r => {
+                const ts = r.last_update_time || '';
+                // 用时间戳去重（数据库有精确时间戳，不会重复）
+                if (ts && ts === h.lastTs) return;
+                h.lastTs = ts;
+                h.time.push(formatTime(ts));
+                h.throughput.push(parseFloat(r.avg_throughput));
+                h.vram.push(parseFloat(r.peak_vram_usage));
+                h.latency.push(parseFloat(r.avg_pipeline_latency));
+            });
+        }
+
+        /* ==========================================================
+         *  🚀 BOOT: 从数据库加载最近 20 条，图表立刻填满
+         * ========================================================== */
+        async function boot() {
+            try {
+                // ① 获取所有节点名
+                const nodesRes = await fetch(BASE_URL + '/api/nodes');
+                const nodesJson = await nodesRes.json();
+                
+                // 兼容不同后端的返回格式 (数组对象 or 字符串数组)
+                const nodesList = nodesJson.data || nodesJson.nodes || [];
+                if (nodesJson.status !== 'success' || !nodesList.length) throw new Error('No nodes');
+
+                const selector = document.getElementById('node-selector');
+                selector.innerHTML = '';
+                
+                // 提取真实的节点名字
+                const validNodeNames = nodesList.map(nd => typeof nd === 'object' ? nd.instance_id : nd).filter(Boolean);
+
+                validNodeNames.forEach(name => {
+                    knownNodes.add(name);
+                    const opt = document.createElement('option');
+                    opt.value = name; opt.innerText = '🔍 Watch: ' + name;
+                    selector.appendChild(opt);
+                });
+
+                // 默认选第一个
+                const first = validNodeNames[0];
+                selector.value = first;
+                document.getElementById('val-instance').innerText     = first;
+                document.getElementById('chart-title-node').innerText = first;
+
+                // ② 为每个节点拉最近 20 条历史记录
+                const fetches = validNodeNames.map(async (name) => {
+                    try {
+                        const hRes  = await fetch(BASE_URL + '/api/history?instance_id=' + encodeURIComponent(name) + '&limit=' + maxPoints);
+                        const hJson = await hRes.json();
+                        if (hJson.status === 'success' && hJson.data && hJson.data.length) {
+                            appendRecords(name, hJson.data);
+                        }
+                    } catch (e) { console.warn('History load failed for', name, e); }
+                });
+                await Promise.all(fetches);
+
+                // ③ 立刻渲染当前选中的节点
+                renderNodeToChart(first);
+                console.log('✅ Boot: loaded history for', validNodeNames.length, 'nodes');
+
+            } catch (e) {
+                console.warn('Boot failed, will rely on polling:', e);
+            }
+
+            bootDone = true;
+
+            // ④ 立刻拉一次最新 + 开始轮询
+            fetchLatest();
+            setInterval(fetchLatest, 2000);
+        }
+
+        /* ==========================================================
+         *  🔄 轮询拉最新一条数据（/api/performance）
+         * ========================================================== */
+        async function fetchLatest() {
+            try {
+                const res  = await fetch(API_URL, { signal: AbortSignal.timeout(3000) });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const json = await res.json();
+                if (json.status !== 'success' || !Array.isArray(json.data)) throw new Error('Bad response');
+
+                const selector = document.getElementById('node-selector');
+
+                // 发现新节点
+                json.data.forEach(nd => {
+                    const name = nd.instance_id || 'vLLM-Node-Unknown';
+                    if (!knownNodes.has(name)) {
+                        knownNodes.add(name);
+                        const opt = document.createElement('option');
+                        opt.value = name; opt.innerText = '🔍 Watch: ' + name;
+                        selector.appendChild(opt);
+                    }
+                });
+
+                if (!selector.value || selector.value === '') {
+                    const first = Array.from(knownNodes)[0];
+                    if (first) {
+                        selector.value = first;
+                        document.getElementById('val-instance').innerText     = first;
+                        document.getElementById('chart-title-node').innerText = first;
+                    }
+                }
+
+                // Summary 表格
+                let html = '';
+                json.data.forEach(nd => {
+                    const name = nd.instance_id || 'vLLM-Node-Unknown';
+                    const tp   = parseFloat(nd.avg_throughput).toFixed(2);
+                    const vr   = parseFloat(nd.peak_vram_usage).toFixed(2);
+                    const lat  = parseFloat(nd.avg_pipeline_latency).toFixed(2);
+                    html += '<tr class="hover:bg-slate-700/30 transition-colors cursor-pointer group"'
+                        + ' onclick="window.location.href=\'history.html?node='+encodeURIComponent(name)+'\'">'
+                        + '<td class="py-3 text-blue-400 font-bold group-hover:text-blue-300 group-hover:underline">'
+                        + '<span class="flex items-center gap-2">' + name
+                        + '<svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>'
+                        + '</span></td>'
+                        + '<td class="py-3 text-emerald-400">' + tp + '</td>'
+                        + '<td class="py-3 text-rose-400">' + vr + '%</td>'
+                        + '<td class="py-3 text-amber-400">' + lat + '</td></tr>';
+                });
+                document.getElementById('summary-body').innerHTML = html;
+
+                // 追加到 history（去重靠 lastTs）
+                json.data.forEach(nd => {
+                    const name = nd.instance_id || 'vLLM-Node-Unknown';
+                    const h = ensureHistory(name);
+                    const ts = nd.last_update_time || new Date().toISOString();
+
+                    if (ts === h.lastTs) return;   // 重复跳过
+                    h.lastTs = ts;
+                    h.time.push(formatTime(ts));
+                    h.throughput.push(parseFloat(nd.avg_throughput));
+                    h.vram.push(parseFloat(nd.peak_vram_usage));
+                    h.latency.push(parseFloat(nd.avg_pipeline_latency));
+
+                    // 内存只保留 500 条
+                    while (h.time.length > 500) {
+                        h.time.shift(); h.throughput.shift(); h.vram.shift(); h.latency.shift();
+                    }
+                });
+
+                // 渲染当前节点
+                const sel = selector.value;
+                if (sel) renderNodeToChart(sel);
+
+                // VRAM 警告
+                const target = json.data.find(n => (n.instance_id||'') === sel);
+                const banner = document.getElementById('alert-banner');
+                if (target && target.peak_vram_usage > 95) {
+                    document.getElementById('alert-title').innerText = 'CRITICAL: GPU VRAM Overflow Risk on ' + sel;
+                    banner.classList.remove('hidden');
+                } else banner.classList.add('hidden');
+
+                setStatus(true);
+            } catch (e) {
+                console.error('Fetch failed:', e);
+                setStatus(false);
+            }
+        }
+
+        /* ===== 下拉框切换 ===== */
+        document.getElementById('node-selector').addEventListener('change', function(e) {
+            const nodeId = e.target.value;
+            document.getElementById('val-instance').innerText     = nodeId;
+            document.getElementById('chart-title-node').innerText = nodeId;
+            renderNodeToChart(nodeId);
+        });
+
+        /* ===== 启动 ===== */
+        boot();
         window.addEventListener('resize', () => chart.resize());
     </script>
 </body>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Node History</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter'], mono: ['JetBrains Mono'] } } } }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .bg-mesh {
+            background-image:
+                radial-gradient(at 20% 20%, rgba(59,130,246,0.08) 0, transparent 50%),
+                radial-gradient(at 80% 80%, rgba(139,92,246,0.06) 0, transparent 50%);
+        }
+        .stat-card {
+            background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9));
+            backdrop-filter: blur(20px);
+        }
+        .chart-card {
+            background: linear-gradient(145deg, rgba(30,41,59,0.6), rgba(15,23,42,0.8));
+            backdrop-filter: blur(20px);
+        }
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 1em;
+        }
+        .loading-spinner {
+            border: 3px solid rgba(100,116,139,0.3);
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            width: 2rem; height: 2rem;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen bg-mesh">
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- HEADER -->
+    <header class="flex flex-wrap justify-between items-start gap-4 mb-8">
+        <div>
+            <h1 class="text-3xl font-extrabold text-white">Node History</h1>
+            <p class="text-slate-500 text-sm mt-1">Full telemetry history for <strong class="text-blue-400" id="subtitle-node">—</strong></p>
+        </div>
+        <div class="flex items-center gap-3">
+            <select id="history-node-selector" class="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg p-2.5 pr-8 font-mono outline-none">
+                <option disabled selected>Loading nodes...</option>
+            </select>
+            <a href="index.html" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+                ← Back to Dashboard
+            </a>
+        </div>
+    </header>
+
+    <!-- LOADING -->
+    <div id="loading-state" class="flex flex-col items-center justify-center py-20">
+        <div class="loading-spinner mb-4"></div>
+        <p class="text-slate-400 text-sm">Loading history from database...</p>
+    </div>
+
+    <!-- CONTENT (hidden until loaded) -->
+    <div id="content" class="hidden">
+        <!-- STAT CARDS -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+            <div class="stat-card rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3"><span>🖥️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Instance</span></div>
+                <div class="text-lg font-bold text-blue-400 font-mono" id="s-instance">—</div>
+                <div class="text-xs text-slate-600">Node Identifier</div>
+            </div>
+            <div class="stat-card rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3"><span>📊</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Records</span></div>
+                <div class="text-2xl font-bold text-white font-mono" id="s-records">0</div>
+                <div class="text-xs text-slate-600">Total data points</div>
+            </div>
+            <div class="stat-card rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3"><span>⚡</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Avg Throughput</span></div>
+                <div class="font-mono"><span class="text-2xl font-bold text-emerald-400" id="s-throughput">—</span> <span class="text-sm text-slate-500">tok/s</span></div>
+                <div class="text-xs text-slate-600">Across all records</div>
+            </div>
+            <div class="stat-card rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3"><span>🧠</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Max VRAM</span></div>
+                <div class="font-mono"><span class="text-2xl font-bold text-rose-400" id="s-vram">—</span> <span class="text-sm text-slate-500">%</span></div>
+                <div class="text-xs text-slate-600">Peak observed</div>
+            </div>
+            <div class="stat-card rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-3"><span>⏱️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Avg Latency</span></div>
+                <div class="font-mono"><span class="text-2xl font-bold text-amber-400" id="s-latency">—</span> <span class="text-sm text-slate-500">ms</span></div>
+                <div class="text-xs text-slate-600">Across all records</div>
+            </div>
+        </div>
+
+        <!-- CHART -->
+        <div class="chart-card rounded-2xl p-6 mb-8">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-lg font-bold text-slate-200">📈 Historical Trend — <span class="text-blue-400" id="chart-node">—</span></h2>
+                <span class="text-xs text-slate-500 font-mono" id="chart-range"></span>
+            </div>
+            <div id="historyChart" style="width:100%; height:420px;"></div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-200">📋 Full History Records</h2>
+                <span class="text-sm text-slate-500 font-mono"><span id="table-count">0</span> records</span>
+            </div>
+            <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table class="w-full text-left">
+                    <thead class="sticky top-0 bg-slate-900 z-10">
+                        <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+                            <th class="pb-3 font-semibold">#</th>
+                            <th class="pb-3 font-semibold">Timestamp</th>
+                            <th class="pb-3 font-semibold">Throughput (tok/s)</th>
+                            <th class="pb-3 font-semibold">VRAM Usage (%)</th>
+                            <th class="pb-3 font-semibold">Latency (ms)</th>
+                            <th class="pb-3 font-semibold">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody" class="text-sm font-mono divide-y divide-slate-700/50"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center text-xs text-slate-700 flex justify-between px-4">
+        <span>Powered by PySpark Structured Streaming & FastAPI</span>
+        <span>PolyU COMP4442 Group Project Demo</span>
+    </footer>
+</div>
+
+<script>
+    const BASE_URL = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com";
+    const params = new URLSearchParams(window.location.search);
+    let selectedNode = params.get('node') || '';
+
+    const chart = echarts.init(document.getElementById('historyChart'));
+
+    /* ===== 加载节点列表 ===== */
+    async function loadNodes() {
+        try {
+            const res  = await fetch(BASE_URL + '/api/nodes');
+            const json = await res.json();
+            if (json.status !== 'success') return [];
+            const list = json.data || json.nodes || [];
+            return list.map(nd => typeof nd === 'object' ? nd.instance_id : nd).filter(Boolean);
+        } catch(e) { console.error(e); return []; }
+    }
+
+    /* ===== 加载某节点全部历史 ===== */
+    async function loadHistory(nodeId, limit) {
+        try {
+            const url  = BASE_URL + '/api/history?instance_id=' + encodeURIComponent(nodeId) + '&limit=' + (limit || 0);
+            const res  = await fetch(url);
+            const json = await res.json();
+            if (json.status !== 'success') return [];
+            return json.data || [];
+        } catch(e) { console.error(e); return []; }
+    }
+
+    /* ===== 渲染 ===== */
+    function renderHistory(nodeId, records) {
+        document.getElementById('subtitle-node').innerText = nodeId;
+        document.getElementById('chart-node').innerText    = nodeId;
+        document.getElementById('s-instance').innerText    = nodeId;
+
+        const len = records.length;
+        document.getElementById('s-records').innerText    = len;
+        document.getElementById('table-count').innerText  = len;
+
+        if (len === 0) {
+            document.getElementById('s-throughput').innerText = '—';
+            document.getElementById('s-vram').innerText       = '—';
+            document.getElementById('s-latency').innerText    = '—';
+            document.getElementById('chart-range').innerText  = '';
+            document.getElementById('history-tbody').innerHTML =
+                '<tr><td colspan="6" class="py-8 text-center text-slate-500">No records found.</td></tr>';
+            chart.clear();
+            return;
+        }
+
+        // 准备数组
+        const times = [], tps = [], vrams = [], lats = [];
+        let sumTp = 0, sumLat = 0, maxVr = 0;
+        records.forEach(r => {
+            const t = r.last_update_time ? new Date(r.last_update_time).toLocaleTimeString() : '';
+            times.push(t);
+            const tp  = parseFloat(r.avg_throughput);
+            const vr  = parseFloat(r.peak_vram_usage);
+            const lat = parseFloat(r.avg_pipeline_latency);
+            tps.push(tp); vrams.push(vr); lats.push(lat);
+            sumTp += tp; sumLat += lat;
+            if (vr > maxVr) maxVr = vr;
+        });
+
+        document.getElementById('s-throughput').innerText = (sumTp / len).toFixed(2);
+        document.getElementById('s-vram').innerText       = maxVr.toFixed(2);
+        document.getElementById('s-latency').innerText    = (sumLat / len).toFixed(2);
+
+        const firstTime = records[0].last_update_time || '';
+        const lastTime  = records[len-1].last_update_time || '';
+        document.getElementById('chart-range').innerText = firstTime + '  →  ' + lastTime;
+
+        // ---- Chart ----
+        chart.setOption({
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(15,23,42,0.95)',
+                borderColor: 'rgba(100,116,139,0.3)', borderWidth: 1,
+                textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono', fontSize: 12 }
+            },
+            legend: {
+                data: ['Throughput (tokens/s)', 'VRAM Usage (%)', 'Latency (ms)'],
+                textStyle: { color: '#64748b', fontSize: 12 }, top: 0
+            },
+            grid: { left: 60, right: 90, top: 45, bottom: 70 },
+            dataZoom: [
+                { type: 'slider', start: 0, end: 100, bottom: 10, height: 24,
+                  borderColor: 'rgba(100,116,139,0.3)', fillerColor: 'rgba(59,130,246,0.25)',
+                  textStyle: { color: '#64748b' } }
+            ],
+            xAxis: {
+                type: 'category', data: times, boundaryGap: false,
+                axisLine: { lineStyle: { color: 'rgba(71,85,105,0.4)' } },
+                axisTick: { show: false },
+                axisLabel: { color: '#475569', fontSize: 9, fontFamily: 'JetBrains Mono', rotate: 30 }
+            },
+            yAxis: [
+                {
+                    type: 'value', name: 'Throughput', position: 'left', min: 0,
+                    nameTextStyle: { color: '#10b981', fontSize: 11 },
+                    axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
+                    axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    splitLine: { lineStyle: { color: 'rgba(51,65,85,0.3)', type: 'dashed' } }
+                },
+                {
+                    type: 'value', name: 'VRAM %', position: 'right', min: 0, max: 100,
+                    nameTextStyle: { color: '#f43f5e', fontSize: 11 },
+                    axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
+                    axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    splitLine: { show: false }
+                },
+                {
+                    type: 'value', name: 'Latency', position: 'right', offset: 50, min: 0,
+                    nameTextStyle: { color: '#f59e0b', fontSize: 11 },
+                    axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
+                    axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
+                    splitLine: { show: false }
+                }
+            ],
+            series: [
+                {
+                    name: 'Throughput (tokens/s)', type: 'line', yAxisIndex: 0,
+                    data: tps, smooth: 0.3, showSymbol: false,
+                    itemStyle: { color: '#10b981' },
+                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(16,185,129,0.3)' },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                            {offset:0,color:'rgba(16,185,129,0.15)'},{offset:1,color:'rgba(16,185,129,0)'}
+                        ])
+                    }
+                },
+                {
+                    name: 'VRAM Usage (%)', type: 'line', yAxisIndex: 1,
+                    data: vrams, smooth: 0.3, showSymbol: false,
+                    itemStyle: { color: '#f43f5e' },
+                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(244,63,94,0.3)' },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                            {offset:0,color:'rgba(244,63,94,0.15)'},{offset:1,color:'rgba(244,63,94,0)'}
+                        ])
+                    },
+                    markLine: {
+                        silent: true, symbol: 'none',
+                        lineStyle: { color: '#eab308', type: 'dashed', width: 2 },
+                        label: { color: '#eab308', fontSize: 11, formatter: '{b}' },
+                        data: [{ yAxis: 95, name: 'VRAM Critical 95%' }]
+                    }
+                },
+                {
+                    name: 'Latency (ms)', type: 'line', yAxisIndex: 2,
+                    data: lats, smooth: 0.3, showSymbol: false,
+                    itemStyle: { color: '#f59e0b' },
+                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(245,158,11,0.3)' }
+                }
+            ]
+        }, true);
+
+        // ---- Table（最新在前） ----
+        let rows = '';
+        for (let i = len - 1; i >= 0; i--) {
+            const vram = vrams[i];
+            const badge = vram > 95
+                ? '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-xs font-bold">⚠ CRITICAL</span>'
+                : vram > 80
+                    ? '<span class="bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">⚡ HIGH</span>'
+                    : '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded text-xs font-bold">✓ Normal</span>';
+            rows += '<tr class="hover:bg-slate-700/30 transition-colors">'
+                + '<td class="py-2 text-slate-500">' + (len - i) + '</td>'
+                + '<td class="py-2 text-slate-300">' + times[i] + '</td>'
+                + '<td class="py-2 text-emerald-400">' + tps[i].toFixed(2) + '</td>'
+                + '<td class="py-2 text-rose-400">' + vram.toFixed(2) + '%</td>'
+                + '<td class="py-2 text-amber-400">' + lats[i].toFixed(2) + '</td>'
+                + '<td class="py-2">' + badge + '</td></tr>';
+        }
+        document.getElementById('history-tbody').innerHTML = rows;
+    }
+
+    /* ===== 主流程 ===== */
+    async function main() {
+        // ① 加载节点列表
+        const nodes = await loadNodes();
+        const selector = document.getElementById('history-node-selector');
+
+        if (nodes.length === 0) {
+            selector.innerHTML = '<option disabled selected>No nodes found</option>';
+            document.getElementById('loading-state').innerHTML =
+                '<p class="text-red-400">Failed to load nodes. Check API connection.</p>';
+            return;
+        }
+
+        selector.innerHTML = '';
+        nodes.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name; opt.innerText = '🔍 ' + name;
+            selector.appendChild(opt);
+        });
+        if (!selectedNode || !nodes.includes(selectedNode)) selectedNode = nodes[0];
+        selector.value = selectedNode;
+
+        // ② 加载并渲染选中节点的历史
+        await loadAndRender(selectedNode);
+
+        // ③ 下拉框切换
+        selector.addEventListener('change', async function() {
+            selectedNode = this.value;
+            // 更新 URL（不刷新）
+            history.replaceState(null, '', '?node=' + encodeURIComponent(selectedNode));
+            document.getElementById('content').classList.add('hidden');
+            document.getElementById('loading-state').classList.remove('hidden');
+            document.getElementById('loading-state').innerHTML =
+                '<div class="loading-spinner mb-4"></div><p class="text-slate-400 text-sm">Loading history...</p>';
+            await loadAndRender(selectedNode);
+        });
+    }
+
+    async function loadAndRender(nodeId) {
+        const records = await loadHistory(nodeId, 0);    // 0 = 全部记录
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+        renderHistory(nodeId, records);
+    }
+
+    main();
+    window.addEventListener('resize', () => chart.resize());
+</script>
+</body>
+</html>
