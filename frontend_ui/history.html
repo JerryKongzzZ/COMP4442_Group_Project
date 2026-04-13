@@ -66,7 +66,7 @@
             <button onclick="loadSummary()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2">
                 ↻ Refresh
             </button>
-            <a href="index.html" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+            <a href="http://43.199.248.171:8000/" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2">
                 ← Live Dashboard
             </a>
         </div>
@@ -119,7 +119,7 @@
         <!-- HEALTH SCORE CHART -->
         <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 mb-8">
             <h2 class="text-lg font-bold text-slate-200 mb-4">📊 Node Health Score Comparison</h2>
-            <div id="healthChart" style="width:100%;height:260px;"></div>
+            <div id="healthChart" style="width:100%;height:320px;"></div>
         </div>
 
         <!-- MAIN SUMMARY TABLE（功能 A 核心） -->
@@ -194,7 +194,7 @@
                 </h2>
                 <span class="text-xs text-slate-500">Click any row in the table above to load</span>
             </div>
-            <div id="detail-chart" style="width:100%;height:360px;"></div>
+            <div id="detail-chart" style="width:100%;height:480px;min-height:480px;"></div>
         </div>
 
         <p class="text-xs text-slate-700 text-center mt-6">
@@ -205,7 +205,7 @@
 </div>
 
 <script>
-const BASE_URL = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com";
+const BASE_URL = "http://43.199.248.171:8000";
 const params   = new URLSearchParams(window.location.search);
 const preNode  = params.get('node') || '';
 
@@ -218,6 +218,7 @@ const hChart = echarts.init(document.getElementById('healthChart'));
 const dChart = echarts.init(document.getElementById('detail-chart'));
 
 /* ===== LOAD SUMMARY FROM /api/summary（Spark 批處理結果） ===== */
+/* ===== LOAD SUMMARY FROM /api/summary（Spark 批處理結果） ===== */
 async function loadSummary() {
     document.getElementById('loading-state').classList.remove('hidden');
     document.getElementById('content').classList.add('hidden');
@@ -229,10 +230,17 @@ async function loadSummary() {
             throw new Error(json.message || 'No summary data');
 
         allData = json.data;
-        renderAll();
 
+        // 1. 先把 Loading 狀態隱藏，並顯示 Content 容器
         document.getElementById('loading-state').classList.add('hidden');
         document.getElementById('content').classList.remove('hidden');
+
+        // 2. 趁著容器剛剛顯示（寬度不再是 0），立刻強制 ECharts 重新計算尺寸
+        hChart.resize();
+        dChart.resize();
+
+        // 3. 尺寸計算正確後，再把數據渲染進表格和圖表中
+        renderAll();
 
         // 若 URL 有指定節點，自動載入其歷史
         if (preNode) loadNodeHistory(preNode);
@@ -275,7 +283,7 @@ function renderAll() {
         tooltip:{ trigger:'axis', formatter:'{b}: {c} pts',
             backgroundColor:'rgba(15,23,42,.95)', borderColor:'rgba(100,116,139,.3)',
             textStyle:{ color:'#e2e8f0', fontFamily:'JetBrains Mono' } },
-        grid:{ left:120, right:40, top:10, bottom:20 },
+        grid:{ left:160, right:60, top:10, bottom:20 },
         xAxis:{ type:'value', max:100,
             axisLabel:{ color:'#475569', fontSize:10 },
             splitLine:{ lineStyle:{ color:'rgba(51,65,85,.3)', type:'dashed' } } },
@@ -341,9 +349,10 @@ async function loadNodeHistory(nodeId) {
                 backgroundColor:'rgba(15,23,42,.95)', borderColor:'rgba(100,116,139,.3)',
                 textStyle:{ color:'#e2e8f0', fontFamily:'JetBrains Mono', fontSize:12 } },
             legend:{ data:['Throughput (tok/s)','VRAM (%)','TTFT (ms)'],
-                textStyle:{ color:'#64748b', fontSize:12 }, top:0 },
-            grid:{ left:60, right:100, top:45, bottom:60 },
-            dataZoom:[{ type:'slider', start:70, end:100, bottom:10, height:20,
+                textStyle:{ color:'#64748b', fontSize:11 }, top:5,
+                orient:'horizontal', itemGap:20 },
+            grid:{ left:80, right:120, top:45, bottom:90 },
+            dataZoom:[{ type:'slider', start:0, end:100, bottom:15, height:25,
                 borderColor:'rgba(100,116,139,.3)', fillerColor:'rgba(59,130,246,.2)',
                 textStyle:{ color:'#64748b' } }],
             xAxis:{ type:'category', data:times, boundaryGap:false,
