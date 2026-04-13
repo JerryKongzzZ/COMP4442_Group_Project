@@ -2,60 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Node History</title>
+    <title>LLM Cluster — Behavior Summary</title>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
-        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter'], mono: ['JetBrains Mono'] } } } }
+        tailwind.config = { theme: { extend: { fontFamily:{ sans:['Inter'], mono:['JetBrains Mono'] } } } }
     </script>
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family:'Inter',sans-serif; }
         .bg-mesh {
             background-image:
-                radial-gradient(at 20% 20%, rgba(59,130,246,0.08) 0, transparent 50%),
-                radial-gradient(at 80% 80%, rgba(139,92,246,0.06) 0, transparent 50%);
+                radial-gradient(at 20% 20%,rgba(59,130,246,.08) 0,transparent 50%),
+                radial-gradient(at 80% 80%,rgba(139,92,246,.06) 0,transparent 50%);
         }
         .stat-card {
-            background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9));
+            background: linear-gradient(145deg,rgba(30,41,59,.8),rgba(15,23,42,.9));
             backdrop-filter: blur(20px);
-        }
-        .chart-card {
-            background: linear-gradient(145deg, rgba(30,41,59,0.6), rgba(15,23,42,0.8));
-            backdrop-filter: blur(20px);
-        }
-        select {
-            appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 0.75rem center;
-            background-size: 1em;
         }
         .loading-spinner {
-            border: 3px solid rgba(100,116,139,0.3);
-            border-top-color: #3b82f6;
-            border-radius: 50%;
-            width: 2rem; height: 2rem;
-            animation: spin 0.8s linear infinite;
+            border:3px solid rgba(100,116,139,.3); border-top-color:#3b82f6;
+            border-radius:50%; width:2rem; height:2rem;
+            animation:spin .8s linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        @keyframes gradientShift {
+            0%,100%{ background-position:0% 50%; } 50%{ background-position:100% 50%; }
+        }
+        .title-gradient {
+            background:linear-gradient(135deg,#60a5fa,#a78bfa,#34d399);
+            background-size:200% auto;
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+            animation:gradientShift 3s linear infinite;
+        }
+        /* 表格行懸停 */
+        #summary-tbody tr { transition:background .15s; }
+        #summary-tbody tr:hover { background:rgba(51,65,85,.4); }
+        /* 健康分顏色 */
+        .score-good    { color:#34d399; }
+        .score-warning { color:#fbbf24; }
+        .score-danger  { color:#f87171; }
+        /* 排序圖標 */
+        th[data-col] { cursor:pointer; user-select:none; }
+        th[data-col]:hover { color:#94a3b8; }
+        th[data-col] .sort-icon { opacity:.4; }
+        th[data-col].sorted .sort-icon { opacity:1; }
     </style>
 </head>
 <body class="bg-slate-950 text-white min-h-screen bg-mesh">
-<div class="max-w-7xl mx-auto px-6 py-8">
+<div class="max-w-screen-xl mx-auto px-6 py-8">
 
     <!-- HEADER -->
     <header class="flex flex-wrap justify-between items-start gap-4 mb-8">
         <div>
-            <h1 class="text-3xl font-extrabold text-white">Node History</h1>
-            <p class="text-slate-500 text-sm mt-1">Full telemetry history for <strong class="text-blue-400" id="subtitle-node">—</strong></p>
+            <h1 class="text-3xl font-extrabold title-gradient tracking-tight">
+                Cluster Behavior Summary
+            </h1>
+            <p class="text-slate-500 text-sm mt-1">
+                Spark batch analysis · One row per node · Cumulative statistics
+            </p>
         </div>
         <div class="flex items-center gap-3">
-            <select id="history-node-selector" class="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg p-2.5 pr-8 font-mono outline-none">
-                <option disabled selected>Loading nodes...</option>
-            </select>
-            <a href="index.html" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2">
-                ← Back to Dashboard
+            <button onclick="loadSummary()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+                ↻ Refresh
+            </button>
+            <a href="index.html" class="bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+                ← Live Dashboard
             </a>
         </div>
     </header>
@@ -63,317 +75,347 @@
     <!-- LOADING -->
     <div id="loading-state" class="flex flex-col items-center justify-center py-20">
         <div class="loading-spinner mb-4"></div>
-        <p class="text-slate-400 text-sm">Loading history from database...</p>
+        <p class="text-slate-400 text-sm">Loading Spark batch summary from database...</p>
     </div>
 
-    <!-- CONTENT (hidden until loaded) -->
+    <!-- ERROR -->
+    <div id="error-state" class="hidden text-center py-20">
+        <p class="text-red-400 text-lg font-bold mb-2" id="error-msg">Failed to load summary.</p>
+        <p class="text-slate-500 text-sm">Make sure spark_job.py has been run at least once on EMR.</p>
+    </div>
+
+    <!-- CONTENT -->
     <div id="content" class="hidden">
-        <!-- STAT CARDS -->
+
+        <!-- CLUSTER STAT CARDS -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <div class="stat-card rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-3"><span>🖥️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Instance</span></div>
-                <div class="text-lg font-bold text-blue-400 font-mono" id="s-instance">—</div>
-                <div class="text-xs text-slate-600">Node Identifier</div>
+                <div class="flex items-center gap-2 mb-3"><span>🖥️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Nodes</span></div>
+                <div class="text-2xl font-bold text-blue-400 font-mono" id="c-nodes">—</div>
+                <div class="text-xs text-slate-600">Total in cluster</div>
             </div>
             <div class="stat-card rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-3"><span>📊</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Records</span></div>
-                <div class="text-2xl font-bold text-white font-mono" id="s-records">0</div>
-                <div class="text-xs text-slate-600">Total data points</div>
+                <div class="flex items-center gap-2 mb-3"><span>🔢</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Total Tokens</span></div>
+                <div class="text-2xl font-bold text-emerald-400 font-mono" id="c-tokens">—</div>
+                <div class="text-xs text-slate-600">Cluster-wide</div>
             </div>
             <div class="stat-card rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-3"><span>⚡</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Avg Throughput</span></div>
-                <div class="font-mono"><span class="text-2xl font-bold text-emerald-400" id="s-throughput">—</span> <span class="text-sm text-slate-500">tok/s</span></div>
-                <div class="text-xs text-slate-600">Across all records</div>
+                <div class="flex items-center gap-2 mb-3"><span>⚠️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">VRAM Alerts</span></div>
+                <div class="text-2xl font-bold text-rose-400 font-mono" id="c-vram-events">—</div>
+                <div class="text-xs text-slate-600">Total exceed events</div>
             </div>
             <div class="stat-card rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-3"><span>🧠</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Max VRAM</span></div>
-                <div class="font-mono"><span class="text-2xl font-bold text-rose-400" id="s-vram">—</span> <span class="text-sm text-slate-500">%</span></div>
-                <div class="text-xs text-slate-600">Peak observed</div>
+                <div class="flex items-center gap-2 mb-3"><span>💾</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">KV Evictions</span></div>
+                <div class="text-2xl font-bold text-amber-400 font-mono" id="c-kv-events">—</div>
+                <div class="text-xs text-slate-600">Total across cluster</div>
             </div>
             <div class="stat-card rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-3"><span>⏱️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Avg Latency</span></div>
-                <div class="font-mono"><span class="text-2xl font-bold text-amber-400" id="s-latency">—</span> <span class="text-sm text-slate-500">ms</span></div>
-                <div class="text-xs text-slate-600">Across all records</div>
+                <div class="flex items-center gap-2 mb-3"><span>⏱️</span><span class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Avg TTFT</span></div>
+                <div class="font-mono"><span class="text-2xl font-bold text-sky-400" id="c-ttft">—</span> <span class="text-sm text-slate-500">ms</span></div>
+                <div class="text-xs text-slate-600">Cluster average</div>
             </div>
         </div>
 
-        <!-- CHART -->
-        <div class="chart-card rounded-2xl p-6 mb-8">
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="text-lg font-bold text-slate-200">📈 Historical Trend — <span class="text-blue-400" id="chart-node">—</span></h2>
-                <span class="text-xs text-slate-500 font-mono" id="chart-range"></span>
-            </div>
-            <div id="historyChart" style="width:100%; height:420px;"></div>
+        <!-- HEALTH SCORE CHART -->
+        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 mb-8">
+            <h2 class="text-lg font-bold text-slate-200 mb-4">📊 Node Health Score Comparison</h2>
+            <div id="healthChart" style="width:100%;height:260px;"></div>
         </div>
 
-        <!-- TABLE -->
-        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+        <!-- MAIN SUMMARY TABLE（功能 A 核心） -->
+        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 mb-8">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-bold text-slate-200">📋 Full History Records</h2>
-                <span class="text-sm text-slate-500 font-mono"><span id="table-count">0</span> records</span>
+                <h2 class="text-lg font-bold text-slate-200">
+                    📋 Full Node Behavior Summary
+                    <span class="text-xs text-slate-500 font-normal ml-2">Click column header to sort</span>
+                </h2>
+                <span class="text-sm text-slate-500 font-mono"><span id="table-count">0</span> nodes</span>
             </div>
-            <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
-                <table class="w-full text-left">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
                     <thead class="sticky top-0 bg-slate-900 z-10">
                         <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-                            <th class="pb-3 font-semibold">#</th>
-                            <th class="pb-3 font-semibold">Timestamp</th>
-                            <th class="pb-3 font-semibold">Throughput (tok/s)</th>
-                            <th class="pb-3 font-semibold">VRAM Usage (%)</th>
-                            <th class="pb-3 font-semibold">Latency (ms)</th>
-                            <th class="pb-3 font-semibold">Status</th>
+                            <th class="pb-3 pr-4 font-semibold">Instance ID</th>
+                            <th class="pb-3 pr-4 font-semibold">GPU</th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="total_tokens">
+                                Total Tokens <span class="sort-icon">↕</span>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="avg_ttft_ms">
+                                Avg TTFT (ms) <span class="sort-icon">↕</span>
+                                <div class="text-[10px] text-slate-600 font-normal normal-case">≈ First token latency</div>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="vram_exceed_count">
+                                VRAM Exceed <span class="sort-icon">↕</span>
+                                <div class="text-[10px] text-slate-600 font-normal normal-case">Count (VRAM &gt; 90%)</div>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="vram_high_duration_min">
+                                VRAM High Duration <span class="sort-icon">↕</span>
+                                <div class="text-[10px] text-slate-600 font-normal normal-case">Minutes over 90%</div>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="kv_eviction_count">
+                                KV Evictions <span class="sort-icon">↕</span>
+                                <div class="text-[10px] text-slate-600 font-normal normal-case">Cache evict events</div>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="avg_kv_hit_rate">
+                                KV Hit Rate <span class="sort-icon">↕</span>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="idle_duration_min">
+                                Idle Duration <span class="sort-icon">↕</span>
+                                <div class="text-[10px] text-slate-600 font-normal normal-case">Minutes VRAM &lt; 30%</div>
+                            </th>
+                            <th class="pb-3 pr-4 font-semibold" data-col="avg_gpu_util">
+                                GPU Util <span class="sort-icon">↕</span>
+                            </th>
+                            <th class="pb-3 font-semibold" data-col="health_score">
+                                Health Score <span class="sort-icon">↕</span>
+                            </th>
                         </tr>
                     </thead>
-                    <tbody id="history-tbody" class="text-sm font-mono divide-y divide-slate-700/50"></tbody>
+                    <tbody id="summary-tbody" class="font-mono divide-y divide-slate-700/50"></tbody>
                 </table>
             </div>
+            <!-- 欄位說明 -->
+            <div class="mt-4 flex flex-wrap gap-4 text-xs text-slate-600">
+                <span>🟢 Health Score ≤ 20: Normal</span>
+                <span>🟡 20–50: Warning</span>
+                <span>🔴 &gt; 50: Critical</span>
+                <span class="ml-4">VRAM Exceed ← analogous to "Overspeed Count"</span>
+                <span>KV Evictions ← analogous to "Fatigue Driving Count"</span>
+                <span>Idle Duration ← analogous to "Neutral Slide Time"</span>
+            </div>
         </div>
-    </div>
 
-    <footer class="mt-8 text-center text-xs text-slate-700 flex justify-between px-4">
-        <span>Powered by PySpark Structured Streaming & FastAPI</span>
-        <span>PolyU COMP4442 Group Project Demo</span>
-    </footer>
+        <!-- PER-NODE DETAIL（點選節點 → 彈出詳細歷史） -->
+        <div class="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-200">
+                    📈 Node Historical Trend —
+                    <span class="text-blue-400" id="detail-node-label">Select a node above</span>
+                </h2>
+                <span class="text-xs text-slate-500">Click any row in the table above to load</span>
+            </div>
+            <div id="detail-chart" style="width:100%;height:360px;"></div>
+        </div>
+
+        <p class="text-xs text-slate-700 text-center mt-6">
+            Summary generated by Spark batch job (spark_job.py) running on AWS EMR ·
+            PolyU COMP4442 Group Project
+        </p>
+    </div>
 </div>
 
 <script>
-    const BASE_URL = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com";
-    const params = new URLSearchParams(window.location.search);
-    let selectedNode = params.get('node') || '';
+const BASE_URL = "https://tr71drune6.execute-api.ap-east-1.amazonaws.com";
+const params   = new URLSearchParams(window.location.search);
+const preNode  = params.get('node') || '';
 
-    const chart = echarts.init(document.getElementById('historyChart'));
+let allData  = [];
+let sortCol  = 'health_score';
+let sortAsc  = false;
 
-    /* ===== 加载节点列表 ===== */
-    async function loadNodes() {
-        try {
-            const res  = await fetch(BASE_URL + '/api/nodes');
-            const json = await res.json();
-            if (json.status !== 'success') return [];
-            const list = json.data || json.nodes || [];
-            return list.map(nd => typeof nd === 'object' ? nd.instance_id : nd).filter(Boolean);
-        } catch(e) { console.error(e); return []; }
-    }
+/* ===== ECHARTS ===== */
+const hChart = echarts.init(document.getElementById('healthChart'));
+const dChart = echarts.init(document.getElementById('detail-chart'));
 
-    /* ===== 加载某节点全部历史 ===== */
-    async function loadHistory(nodeId, limit) {
-        try {
-            const url  = BASE_URL + '/api/history?instance_id=' + encodeURIComponent(nodeId) + '&limit=' + (limit || 0);
-            const res  = await fetch(url);
-            const json = await res.json();
-            if (json.status !== 'success') return [];
-            return json.data || [];
-        } catch(e) { console.error(e); return []; }
-    }
+/* ===== LOAD SUMMARY FROM /api/summary（Spark 批處理結果） ===== */
+async function loadSummary() {
+    document.getElementById('loading-state').classList.remove('hidden');
+    document.getElementById('content').classList.add('hidden');
+    document.getElementById('error-state').classList.add('hidden');
 
-    /* ===== 渲染 ===== */
-    function renderHistory(nodeId, records) {
-        document.getElementById('subtitle-node').innerText = nodeId;
-        document.getElementById('chart-node').innerText    = nodeId;
-        document.getElementById('s-instance').innerText    = nodeId;
+    try {
+        const json = await fetch(BASE_URL + '/api/summary').then(r => r.json());
+        if (json.status !== 'success' || !json.data || !json.data.length)
+            throw new Error(json.message || 'No summary data');
 
-        // 确保 records 是数组
-        if (!records || !Array.isArray(records)) records = [];
+        allData = json.data;
+        renderAll();
 
-        const len = records.length;
-        document.getElementById('s-records').innerText    = len;
-        document.getElementById('table-count').innerText  = len;
-
-        if (len === 0) {
-            document.getElementById('s-throughput').innerText = '—';
-            document.getElementById('s-vram').innerText       = '—';
-            document.getElementById('s-latency').innerText    = '—';
-            document.getElementById('chart-range').innerText  = '';
-            document.getElementById('history-tbody').innerHTML =
-                '<tr><td colspan="6" class="py-8 text-center text-slate-500">No records found.</td></tr>';
-            chart.clear();
-            return;
-        }
-
-        // 准备数组
-        const times = [], tps = [], vrams = [], lats = [];
-        let sumTp = 0, sumLat = 0, maxVr = 0;
-        
-        records.forEach(r => {
-            const t = r.last_update_time ? new Date(r.last_update_time).toLocaleTimeString() : '';
-            times.push(t);
-            const tp  = parseFloat(r.avg_throughput) || 0;
-            const vr  = parseFloat(r.peak_vram_usage) || 0;
-            const lat = parseFloat(r.avg_pipeline_latency) || 0;
-            
-            tps.push(tp); 
-            vrams.push(vr); 
-            lats.push(lat);
-            
-            sumTp += tp; 
-            sumLat += lat;
-            if (vr > maxVr) maxVr = vr;
-        });
-
-        document.getElementById('s-throughput').innerText = (sumTp / len).toFixed(2);
-        document.getElementById('s-vram').innerText       = maxVr.toFixed(2);
-        document.getElementById('s-latency').innerText    = (sumLat / len).toFixed(2);
-
-        const firstTime = times[0] || '';
-        const lastTime  = times[len-1] || '';
-        document.getElementById('chart-range').innerText = firstTime + '  →  ' + lastTime;
-
-        // ---- Chart ----
-        chart.setOption({
-            backgroundColor: 'transparent',
-            tooltip: {
-                trigger: 'axis',
-                backgroundColor: 'rgba(15,23,42,0.95)',
-                borderColor: 'rgba(100,116,139,0.3)', borderWidth: 1,
-                textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono', fontSize: 12 }
-            },
-            legend: {
-                data: ['Throughput (tokens/s)', 'VRAM Usage (%)', 'Latency (ms)'],
-                textStyle: { color: '#64748b', fontSize: 12 }, top: 0
-            },
-            grid: { left: 60, right: 90, top: 45, bottom: 70 },
-            dataZoom: [
-                { type: 'slider', start: 80, end: 100, bottom: 10, height: 24,
-                  borderColor: 'rgba(100,116,139,0.3)', fillerColor: 'rgba(59,130,246,0.25)',
-                  textStyle: { color: '#64748b' } }
-            ],
-            xAxis: {
-                type: 'category', data: times, boundaryGap: false,
-                axisLine: { lineStyle: { color: 'rgba(71,85,105,0.4)' } },
-                axisTick: { show: false },
-                axisLabel: { color: '#475569', fontSize: 9, fontFamily: 'JetBrains Mono', rotate: 30 }
-            },
-            yAxis: [
-                {
-                    type: 'value', name: 'Throughput', position: 'left', min: 0,
-                    nameTextStyle: { color: '#10b981', fontSize: 11 },
-                    axisLine: { show: true, lineStyle: { color: 'rgba(16,185,129,0.5)' } },
-                    axisLabel: { color: '#10b981', fontSize: 10, fontFamily: 'JetBrains Mono' },
-                    splitLine: { lineStyle: { color: 'rgba(51,65,85,0.3)', type: 'dashed' } }
-                },
-                {
-                    type: 'value', name: 'VRAM %', position: 'right', min: 0, max: 100,
-                    nameTextStyle: { color: '#f43f5e', fontSize: 11 },
-                    axisLine: { show: true, lineStyle: { color: 'rgba(244,63,94,0.5)' } },
-                    axisLabel: { color: '#f43f5e', fontSize: 10, fontFamily: 'JetBrains Mono' },
-                    splitLine: { show: false }
-                },
-                {
-                    type: 'value', name: 'Latency', position: 'right', offset: 50, min: 0,
-                    nameTextStyle: { color: '#f59e0b', fontSize: 11 },
-                    axisLine: { show: true, lineStyle: { color: 'rgba(245,158,11,0.5)' } },
-                    axisLabel: { color: '#f59e0b', fontSize: 10, fontFamily: 'JetBrains Mono' },
-                    splitLine: { show: false }
-                }
-            ],
-            series: [
-                {
-                    name: 'Throughput (tokens/s)', type: 'line', yAxisIndex: 0,
-                    data: tps, smooth: 0.3, showSymbol: false,
-                    itemStyle: { color: '#10b981' },
-                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(16,185,129,0.3)' },
-                    areaStyle: {
-                        color: new echarts.graphic.LinearGradient(0,0,0,1,[
-                            {offset:0,color:'rgba(16,185,129,0.15)'},{offset:1,color:'rgba(16,185,129,0)'}
-                        ])
-                    }
-                },
-                {
-                    name: 'VRAM Usage (%)', type: 'line', yAxisIndex: 1,
-                    data: vrams, smooth: 0.3, showSymbol: false,
-                    itemStyle: { color: '#f43f5e' },
-                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(244,63,94,0.3)' },
-                    areaStyle: {
-                        color: new echarts.graphic.LinearGradient(0,0,0,1,[
-                            {offset:0,color:'rgba(244,63,94,0.15)'},{offset:1,color:'rgba(244,63,94,0)'}
-                        ])
-                    },
-                    markLine: {
-                        silent: true, symbol: 'none',
-                        lineStyle: { color: '#eab308', type: 'dashed', width: 2 },
-                        label: { color: '#eab308', fontSize: 11, formatter: '{b}' },
-                        data: [{ yAxis: 95, name: 'VRAM Critical 95%' }]
-                    }
-                },
-                {
-                    name: 'Latency (ms)', type: 'line', yAxisIndex: 2,
-                    data: lats, smooth: 0.3, showSymbol: false,
-                    itemStyle: { color: '#f59e0b' },
-                    lineStyle: { width: 2, shadowBlur: 8, shadowColor: 'rgba(245,158,11,0.3)' }
-                }
-            ]
-        }, true);
-
-        // ---- Table（最新在前） ----
-        let rows = '';
-        for (let i = len - 1; i >= 0; i--) {
-            const vram = vrams[i];
-            const badge = vram > 95
-                ? '<span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-xs font-bold">⚠ CRITICAL</span>'
-                : vram > 80
-                    ? '<span class="bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded text-xs font-bold">⚡ HIGH</span>'
-                    : '<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded text-xs font-bold">✓ Normal</span>';
-            rows += '<tr class="hover:bg-slate-700/30 transition-colors">'
-                + '<td class="py-2 text-slate-500">' + (len - i) + '</td>'
-                + '<td class="py-2 text-slate-300">' + times[i] + '</td>'
-                + '<td class="py-2 text-emerald-400">' + tps[i].toFixed(2) + '</td>'
-                + '<td class="py-2 text-rose-400">' + vram.toFixed(2) + '%</td>'
-                + '<td class="py-2 text-amber-400">' + lats[i].toFixed(2) + '</td>'
-                + '<td class="py-2">' + badge + '</td></tr>';
-        }
-        document.getElementById('history-tbody').innerHTML = rows;
-    }
-
-    /* ===== 主流程 ===== */
-    async function main() {
-        // ① 加载节点列表
-        const nodes = await loadNodes();
-        const selector = document.getElementById('history-node-selector');
-
-        if (nodes.length === 0) {
-            selector.innerHTML = '<option disabled selected>No nodes found</option>';
-            document.getElementById('loading-state').innerHTML =
-                '<p class="text-red-400">Failed to load nodes. Check API connection.</p>';
-            return;
-        }
-
-        selector.innerHTML = '';
-        nodes.forEach(name => {
-            const opt = document.createElement('option');
-            opt.value = name; opt.innerText = '🔍 ' + name;
-            selector.appendChild(opt);
-        });
-        if (!selectedNode || !nodes.includes(selectedNode)) selectedNode = nodes[0];
-        selector.value = selectedNode;
-
-        // ② 加载并渲染选中节点的历史
-        await loadAndRender(selectedNode);
-
-        // ③ 下拉框切换
-        selector.addEventListener('change', async function() {
-            selectedNode = this.value;
-            // 更新 URL（不刷新）
-            history.replaceState(null, '', '?node=' + encodeURIComponent(selectedNode));
-            document.getElementById('content').classList.add('hidden');
-            document.getElementById('loading-state').classList.remove('hidden');
-            document.getElementById('loading-state').innerHTML =
-                '<div class="loading-spinner mb-4"></div><p class="text-slate-400 text-sm">Loading history...</p>';
-            await loadAndRender(selectedNode);
-        });
-    }
-
-    async function loadAndRender(nodeId) {
-        const records = await loadHistory(nodeId, 0);    // 0 = 全部记录
         document.getElementById('loading-state').classList.add('hidden');
         document.getElementById('content').classList.remove('hidden');
-        
-        // 容器显示后需要重新调整图表大小，否则会挤在一起
-        chart.resize();
-        
-        renderHistory(nodeId, records);
-    }
 
-    main();
-    window.addEventListener('resize', () => chart.resize());
+        // 若 URL 有指定節點，自動載入其歷史
+        if (preNode) loadNodeHistory(preNode);
+
+    } catch(e) {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+        document.getElementById('error-msg').innerText = '❌ ' + e.message;
+    }
+}
+
+/* ===== RENDER ALL（表格 + 卡片 + 健康分圖） ===== */
+function renderAll() {
+    const data = [...allData].sort((a, b) => {
+        const va = parseFloat(a[sortCol]) || 0;
+        const vb = parseFloat(b[sortCol]) || 0;
+        return sortAsc ? va - vb : vb - va;
+    });
+
+    /* 頂部統計卡片 */
+    const totTokens  = data.reduce((s,r) => s + (parseInt(r.total_tokens)||0), 0);
+    const totVram    = data.reduce((s,r) => s + (parseInt(r.vram_exceed_count)||0), 0);
+    const totKV      = data.reduce((s,r) => s + (parseInt(r.kv_eviction_count)||0), 0);
+    const avgTtft    = data.reduce((s,r) => s + (parseFloat(r.avg_ttft_ms)||0), 0) / data.length;
+    document.getElementById('c-nodes').innerText      = data.length;
+    document.getElementById('c-tokens').innerText     = fmtBig(totTokens);
+    document.getElementById('c-vram-events').innerText= totVram;
+    document.getElementById('c-kv-events').innerText  = totKV;
+    document.getElementById('c-ttft').innerText       = avgTtft.toFixed(0);
+    document.getElementById('table-count').innerText  = data.length;
+
+    /* 健康分橫條圖 */
+    const nodes  = data.map(r => r.instance_id);
+    const scores = data.map(r => {
+        const s = parseFloat(r.health_score) || 0;
+        return { value: s, itemStyle: { color: s > 50 ? '#f87171' : s > 20 ? '#fbbf24' : '#34d399' } };
+    });
+    hChart.setOption({
+        backgroundColor:'transparent',
+        tooltip:{ trigger:'axis', formatter:'{b}: {c} pts',
+            backgroundColor:'rgba(15,23,42,.95)', borderColor:'rgba(100,116,139,.3)',
+            textStyle:{ color:'#e2e8f0', fontFamily:'JetBrains Mono' } },
+        grid:{ left:120, right:40, top:10, bottom:20 },
+        xAxis:{ type:'value', max:100,
+            axisLabel:{ color:'#475569', fontSize:10 },
+            splitLine:{ lineStyle:{ color:'rgba(51,65,85,.3)', type:'dashed' } } },
+        yAxis:{ type:'category', data:nodes, inverse:true,
+            axisLabel:{ color:'#94a3b8', fontSize:11, fontFamily:'JetBrains Mono' } },
+        series:[{ type:'bar', data:scores, barMaxWidth:20,
+            label:{ show:true, position:'right', color:'#94a3b8', fontSize:10,
+                    formatter:p => p.value.toFixed(1) } }]
+    });
+
+    /* 主摘要表格 */
+    let rows = '';
+    data.forEach(r => {
+        const score = parseFloat(r.health_score) || 0;
+        const sCls  = score > 50 ? 'score-danger' : score > 20 ? 'score-warning' : 'score-good';
+        const sBadge = score > 50
+            ? '<span class="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-xs font-bold">🔴 Critical</span>'
+            : score > 20
+                ? '<span class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded text-xs font-bold">🟡 Warning</span>'
+                : '<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-xs font-bold">🟢 Normal</span>';
+
+        const kvHit = r.avg_kv_hit_rate != null
+            ? (parseFloat(r.avg_kv_hit_rate)*100).toFixed(1)+'%' : '—';
+        const kvHitColor = parseFloat(r.avg_kv_hit_rate) > 0.8 ? 'text-emerald-400'
+            : parseFloat(r.avg_kv_hit_rate) > 0.6 ? 'text-amber-400' : 'text-rose-400';
+
+        rows += `<tr class="cursor-pointer" onclick="loadNodeHistory('${r.instance_id}')">
+            <td class="py-3 pr-4 text-blue-400 font-bold hover:underline">${r.instance_id}</td>
+            <td class="py-3 pr-4 text-slate-400 text-xs">${r.gpu_model || '—'}</td>
+            <td class="py-3 pr-4 text-emerald-400">${fmtBig(parseInt(r.total_tokens)||0)}</td>
+            <td class="py-3 pr-4 text-amber-400">${parseFloat(r.avg_ttft_ms||0).toFixed(0)}</td>
+            <td class="py-3 pr-4 text-rose-400 font-bold">${r.vram_exceed_count||0}</td>
+            <td class="py-3 pr-4 text-rose-300">${parseFloat(r.vram_high_duration_min||0).toFixed(1)} min</td>
+            <td class="py-3 pr-4 text-orange-400 font-bold">${r.kv_eviction_count||0}</td>
+            <td class="py-3 pr-4 ${kvHitColor}">${kvHit}</td>
+            <td class="py-3 pr-4 text-sky-400">${parseFloat(r.idle_duration_min||0).toFixed(1)} min</td>
+            <td class="py-3 pr-4 text-purple-400">${parseFloat(r.avg_gpu_util||0).toFixed(1)}%</td>
+            <td class="py-3">${sBadge} <span class="ml-1 text-xs font-mono ${sCls}">${score.toFixed(1)}</span></td>
+        </tr>`;
+    });
+    document.getElementById('summary-tbody').innerHTML = rows ||
+        '<tr><td colspan="11" class="py-8 text-center text-slate-500">No data found.</td></tr>';
+}
+
+/* ===== LOAD NODE HISTORY → DETAIL CHART ===== */
+async function loadNodeHistory(nodeId) {
+    document.getElementById('detail-node-label').innerText = nodeId + ' (loading...)';
+    try {
+        const json = await fetch(`${BASE_URL}/api/history?instance_id=${encodeURIComponent(nodeId)}&limit=60`).then(r => r.json());
+        if (json.status !== 'success' || !json.data.length) throw new Error('No data');
+
+        const records = json.data;
+        const times   = records.map(r => r.last_update_time ? new Date(r.last_update_time).toLocaleTimeString() : '');
+        const vrams   = records.map(r => parseFloat(r.peak_vram_usage)||0);
+        const tps     = records.map(r => parseFloat(r.avg_throughput)||0);
+        const ttfts   = records.map(r => parseFloat(r.avg_ttft_ms)||0);
+
+        document.getElementById('detail-node-label').innerText = nodeId;
+
+        dChart.setOption({
+            backgroundColor:'transparent',
+            tooltip:{ trigger:'axis',
+                backgroundColor:'rgba(15,23,42,.95)', borderColor:'rgba(100,116,139,.3)',
+                textStyle:{ color:'#e2e8f0', fontFamily:'JetBrains Mono', fontSize:12 } },
+            legend:{ data:['Throughput (tok/s)','VRAM (%)','TTFT (ms)'],
+                textStyle:{ color:'#64748b', fontSize:12 }, top:0 },
+            grid:{ left:60, right:100, top:45, bottom:60 },
+            dataZoom:[{ type:'slider', start:70, end:100, bottom:10, height:20,
+                borderColor:'rgba(100,116,139,.3)', fillerColor:'rgba(59,130,246,.2)',
+                textStyle:{ color:'#64748b' } }],
+            xAxis:{ type:'category', data:times, boundaryGap:false,
+                axisLine:{ lineStyle:{ color:'rgba(71,85,105,.4)' } },
+                axisLabel:{ color:'#475569', fontSize:9, fontFamily:'JetBrains Mono', rotate:20 },
+                axisTick:{ show:false } },
+            yAxis:[
+                { type:'value', name:'Throughput', position:'left', min:0,
+                  nameTextStyle:{ color:'#10b981', fontSize:11 },
+                  axisLine:{ show:true, lineStyle:{ color:'rgba(16,185,129,.5)' } },
+                  axisLabel:{ color:'#10b981', fontSize:10 },
+                  splitLine:{ lineStyle:{ color:'rgba(51,65,85,.3)', type:'dashed' } } },
+                { type:'value', name:'VRAM %', position:'right', min:0, max:100,
+                  nameTextStyle:{ color:'#f43f5e', fontSize:11 },
+                  axisLine:{ show:true, lineStyle:{ color:'rgba(244,63,94,.5)' } },
+                  axisLabel:{ color:'#f43f5e', fontSize:10 },
+                  splitLine:{ show:false } },
+                { type:'value', name:'TTFT ms', position:'right', offset:55, min:0,
+                  nameTextStyle:{ color:'#f59e0b', fontSize:11 },
+                  axisLine:{ show:true, lineStyle:{ color:'rgba(245,158,11,.5)' } },
+                  axisLabel:{ color:'#f59e0b', fontSize:10 },
+                  splitLine:{ show:false } }
+            ],
+            series:[
+                { name:'Throughput (tok/s)', type:'line', yAxisIndex:0, data:tps, smooth:.3,
+                  showSymbol:false, itemStyle:{ color:'#10b981' },
+                  lineStyle:{ width:2, shadowBlur:8, shadowColor:'rgba(16,185,129,.3)' },
+                  areaStyle:{ color:new echarts.graphic.LinearGradient(0,0,0,1,[
+                      {offset:0,color:'rgba(16,185,129,.15)'},{offset:1,color:'rgba(16,185,129,0)'}]) } },
+                { name:'VRAM (%)', type:'line', yAxisIndex:1, data:vrams, smooth:.3,
+                  showSymbol:false, itemStyle:{ color:'#f43f5e' },
+                  lineStyle:{ width:2, shadowBlur:8, shadowColor:'rgba(244,63,94,.3)' },
+                  areaStyle:{ color:new echarts.graphic.LinearGradient(0,0,0,1,[
+                      {offset:0,color:'rgba(244,63,94,.15)'},{offset:1,color:'rgba(244,63,94,0)'}]) },
+                  markLine:{ silent:true, symbol:'none',
+                      lineStyle:{ color:'#eab308', type:'dashed', width:1.5 },
+                      label:{ color:'#eab308', fontSize:10 },
+                      data:[{ yAxis:95, name:'OOM 95%' }] } },
+                { name:'TTFT (ms)', type:'line', yAxisIndex:2, data:ttfts, smooth:.3,
+                  showSymbol:false, itemStyle:{ color:'#f59e0b' },
+                  lineStyle:{ width:2, shadowBlur:8, shadowColor:'rgba(245,158,11,.3)' } }
+            ]
+        }, true);
+    } catch(e) {
+        document.getElementById('detail-node-label').innerText = nodeId + ' (no history data)';
+    }
+}
+
+/* ===== SORT ===== */
+document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortAsc = !sortAsc;
+        else { sortCol = col; sortAsc = false; }
+        document.querySelectorAll('th[data-col]').forEach(t => t.classList.remove('sorted'));
+        th.classList.add('sorted');
+        th.querySelector('.sort-icon').textContent = sortAsc ? '↑' : '↓';
+        renderAll();
+    });
+});
+
+/* ===== HELPERS ===== */
+function fmtBig(n) {
+    if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
+    return String(n);
+}
+
+/* ===== START ===== */
+loadSummary();
+window.addEventListener('resize', () => { hChart.resize(); dChart.resize(); });
 </script>
 </body>
 </html>
