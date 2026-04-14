@@ -32,7 +32,7 @@ def get_conn():
     return pymysql.connect(**DB_CONFIG)
 
 
-# ── 静态网页托管 ──────────────────────────────────────────────────────────
+# ── Static file hosting ───────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="/home/ubuntu/static"), name="static")
 
 @app.get("/")
@@ -48,7 +48,7 @@ def history_page2():
     return FileResponse("/home/ubuntu/static/history.html")
 
 
-# ── 功能 B：实时监控数据 ──────────────────────────────────────────────────
+# ── Function B: real-time per-node monitoring data ───────────────────────────
 @app.get("/api/performance")
 def get_llm_performance():
     try:
@@ -84,49 +84,38 @@ def get_llm_performance():
         return {"status": "error", "message": str(e)}
 
 
-# ── 功能 A：实时汇总摘要（直接从数据库计算，不需要 spark_job）────────────────
+# ── Function A: historical cluster summary (Spark-computed, read from node_summary) ──
 @app.get("/api/summary")
 def get_cluster_summary():
+    """
+    Returns the pre-computed historical summary written by the Spark unified job.
+    spark_unified.py refreshes node_summary every ~60 seconds via a full
+    aggregation over performance_summary; this endpoint simply reads the result.
+    """
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT
-                    instance_id,
-                    MAX(gpu_model) as gpu_model,
-                    COUNT(*) as record_count,
-                    ROUND(SUM(avg_throughput), 0) as total_tokens,
-                    ROUND(AVG(avg_throughput), 2) as avg_throughput,
-                    SUM(CASE WHEN peak_vram_usage > 90 THEN 1 ELSE 0 END) as vram_exceed_count,
-                    ROUND(SUM(CASE WHEN peak_vram_usage > 90 THEN 1 ELSE 0 END) / 60.0, 1) as vram_high_duration_min,
-                    ROUND(MAX(peak_vram_usage), 2) as peak_vram_usage,
-                    ROUND(AVG(avg_vram_usage), 2) as avg_vram_usage,
-                    SUM(CASE WHEN kv_evictions_in_batch > 0 THEN 1 ELSE 0 END) as kv_eviction_count,
-                    SUM(kv_evictions_in_batch) as total_kv_evictions,
-                    ROUND(AVG(avg_kv_hit_rate), 3) as avg_kv_hit_rate,
-                    ROUND(SUM(CASE WHEN avg_vram_usage < 30 THEN 1 ELSE 0 END) / 60.0, 1) as idle_duration_min,
-                    ROUND(AVG(avg_ttft_ms), 2) as avg_ttft_ms,
-                    ROUND(MAX(avg_ttft_ms), 2) as max_ttft_ms,
-                    ROUND(AVG(avg_pipeline_latency), 2) as avg_pipeline_latency,
-                    ROUND(AVG(avg_gpu_util), 2) as avg_gpu_util,
-                    SUM(requests_completed) as total_requests_completed,
-                    MIN(last_update_time) as data_start,
-                    MAX(last_update_time) as data_end,
-                    ROUND(LEAST(100,
-                        (SUM(CASE WHEN peak_vram_usage > 90 THEN 1 ELSE 0 END) * 1.0 / COUNT(*)) * 60 +
-                        (SUM(CASE WHEN kv_evictions_in_batch > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*)) * 30 +
-                        GREATEST(0, (AVG(avg_ttft_ms) - 200) / 10)
-                    ), 1) as health_score
-                FROM performance_summary
-                WHERE instance_id LIKE 'vLLM-Node-%'
-                GROUP BY instance_id
+                SELECT instance_id, gpu_model,
+                       total_tokens, avg_throughput,
+                       vram_exceed_count, vram_high_duration_min,
+                       peak_vram_usage, avg_vram_usage,
+                       kv_eviction_count, total_kv_evictions, avg_kv_hit_rate,
+                       idle_duration_min,
+                       avg_ttft_ms, max_ttft_ms, avg_pipeline_latency,
+                       avg_gpu_util, total_requests_completed,
+                       record_count, health_score,
+                       data_start, data_end
+                FROM node_summary
+                WHERE instance_id LIKE 'vLLM-Node-%%'
                 ORDER BY health_score DESC
             """)
             rows = cur.fetchall()
         conn.close()
 
         if not rows:
-            return {"status": "error", "message": "No summary data yet."}
+            return {"status": "error", "message": "No summary data yet. "
+                    "The Spark job refreshes node_summary every 60 seconds."}
 
         for r in rows:
             for k in ("data_start", "data_end"):
@@ -139,7 +128,7 @@ def get_cluster_summary():
         return {"status": "error", "message": str(e)}
 
 
-# ── 单节点历史趋势 ────────────────────────────────────────────────────────
+# ── Per-node historical trend ─────────────────────────────────────────────────
 @app.get("/api/history")
 def get_node_history(
     instance_id: str = Query(...),
@@ -181,19 +170,23 @@ def get_node_history(
             if r.get("last_update_time"):
                 r["last_update_time"] = str(r["last_update_time"])
 
-        return {"status": "success", "instance_id": instance_id, "count": len(rows), "data": rows}
+        return {"status": "success", "instance_id": instance_id,
+                "count": len(rows), "data": rows}
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
-# ── 节点列表 ──────────────────────────────────────────────────────────────
+# ── Node list ─────────────────────────────────────────────────────────────────
 @app.get("/api/nodes")
 def get_all_nodes():
     try:
         conn = get_conn()
         with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT instance_id FROM performance_summary ORDER BY instance_id")
+            cur.execute(
+                "SELECT DISTINCT instance_id FROM performance_summary "
+                "ORDER BY instance_id"
+            )
             rows = cur.fetchall()
         conn.close()
         nodes = [r["instance_id"] for r in rows if r.get("instance_id")]
