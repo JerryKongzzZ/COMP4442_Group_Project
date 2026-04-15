@@ -1,0 +1,17 @@
+# ============================================================
+# COMP4442 Group Project — Python Dependencies
+# ============================================================
+# Install with:  pip install -r requirements.txt
+# ============================================================
+
+# ── Data Pipeline (data_pipeline/data_pusher.py) ─────────────
+boto3>=1.34.0          # AWS SDK: S3 client for uploading log files
+python-dotenv>=1.0.0   # Load environment variables from .env file
+
+# ── Spark Analytics (spark_analytics/spark_unified.py) ───────
+pyspark>=3.5.0         # Apache Spark: Structured Streaming + batch aggregation
+
+# ── Backend API (backend_api/main.py) ─────────────────────────
+fastapi>=0.110.0       # Web framework for the REST API server
+uvicorn[standard]>=0.29.0  # ASGI server to run FastAPI
+pymysql>=1.1.0         # MySQL client for RDS connections
